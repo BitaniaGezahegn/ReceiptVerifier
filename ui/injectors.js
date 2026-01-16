@@ -217,15 +217,7 @@ export function showRandomReviewModal(html, mgmtTabId, rowId, extractedId, imgUr
     });
   }
   
-  export function scrapeBankData() {
-    const xpaths = {
-      recipient: '//*[@id="invoice"]/table[1]/tbody/tr[4]/td/table/tbody/tr/td[2]/table/tbody/tr[2]/td',
-      reason: '//*[@id="invoice"]/table[1]/tbody/tr[6]/td/table/tbody/tr[3]/td[2]',
-      date: '//*[@id="invoice"]/table[1]/tbody/tr[3]/td/table/tbody/tr[1]/td[3]',
-      amount: '//*[@id="invoice"]/table[1]/tbody/tr[3]/td/table/tbody/tr[3]/td[3]/strong[2]',
-      senderName: '//*[@id="invoice"]/table[1]/tbody/tr[4]/td/table/tbody/tr/td[1]/table/tbody/tr[2]/td',
-      senderPhone: '//*[@id="invoice"]/table[1]/tbody/tr[4]/td/table/tbody/tr/td[1]/table/tbody/tr[4]/td'
-    };
+  export function scrapeBankData(xpaths) {
     const getX = (p) => { const res = document.evaluate(p, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue; return res ? res.innerText.replace(/[\s\u00A0]+/g, ' ').trim() : null; };
     const nodeR = getX(xpaths.recipient); const nodeD = getX(xpaths.date); const nodeA = getX(xpaths.amount);
     

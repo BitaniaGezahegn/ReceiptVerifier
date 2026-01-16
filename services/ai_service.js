@@ -1,4 +1,45 @@
+// c:\Users\BT\Desktop\Venv\zOther\Ebirr_Chrome_Verifier\services\ai_service.js
 import { DEFAULT_API_KEY, DEFAULT_BANKS } from '../config.js';
+import { settingsCache } from './settings_service.js';
+
+// RATE LIMITING QUEUE
+let aiQueue = Promise.resolve();
+let lastAiRequestTime = 0;
+const MIN_AI_INTERVAL = 4000; // 4 seconds = 15 requests per minute
+
+export async function callAIVisionWithRetry(base64, mimeType = 'image/jpeg') {
+    const keys = settingsCache.apiKeys;
+    const banks = settingsCache.banks;
+    
+    // Enforce sequential execution with rate limiting
+    return new Promise((resolve) => {
+        aiQueue = aiQueue.then(async () => {
+            const now = Date.now();
+            const timeSinceLast = now - lastAiRequestTime;
+            const wait = Math.max(0, MIN_AI_INTERVAL - timeSinceLast);
+            
+            if (wait > 0) {
+                await new Promise(r => setTimeout(r, wait));
+            }
+            
+            lastAiRequestTime = Date.now();
+
+            try {
+                const result = await callAIVision(base64, keys, settingsCache.activeKeyIndex, banks, mimeType);
+                console.log("AI Result:", result);
+                resolve(result);
+            } catch (e) {
+                if (e.message && (e.message.includes("Rate Limited") || e.message.includes("exhausted") || e.message.includes("restricted") || e.message.includes("quota") || e.message.includes("exceeded"))) {
+                    console.warn("AI Service Rate Limit:", e.message);
+                    resolve("RATE_LIMIT");
+                } else {
+                    console.error("AI Service Error:", e);
+                    resolve("SERVICE_ERROR");
+                }
+            }
+        });
+    });
+}
 
 export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedBanks, mimeType = 'image/jpeg') {
     let keys = cachedKeys;
@@ -10,6 +51,12 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
         keys = storage.apiKeys || [DEFAULT_API_KEY];
         currentIndex = storage.activeKeyIndex || 0;
         banks = storage.banks || DEFAULT_BANKS;
+    }
+
+    // Filter out empty keys to prevent unnecessary API calls
+    const validKeys = keys.filter(k => k && k.trim().length > 0);
+    if (validKeys.length === 0) {
+        throw new Error("No valid API keys found. Please add an API key in the extension settings.");
     }
   
     // Generate Dynamic Prompt
@@ -55,12 +102,12 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
     </|output_format|>
     `;
     
-    if (currentIndex >= keys.length) currentIndex = 0;
+    if (currentIndex >= validKeys.length) currentIndex = 0;
   
     // Try keys loop (Rotation Logic)
-    for (let attempt = 0; attempt < keys.length; attempt++) {
-        const i = (currentIndex + attempt) % keys.length;
-        const apiKey = keys[i];
+    for (let attempt = 0; attempt < validKeys.length; attempt++) {
+        const i = (currentIndex + attempt) % validKeys.length;
+        const apiKey = validKeys[i];
         
         const isGroq = apiKey.startsWith('gsk_');
         let response;
@@ -111,7 +158,15 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
                 });
             }
 
-            if (response.status === 429) { console.warn(`Key index ${i} rate limited.`); continue; }
+            if (response.status === 429) { 
+                console.warn(`Key index ${i} rate limited.`); 
+                try {
+                    // Attempt to read error body for debugging
+                    const errBody = await response.json();
+                    console.warn("Rate Limit Details:", errBody);
+                } catch (e) {}
+                continue; 
+            }
             if (!response.ok) { const err = await response.json(); throw new Error(err.error?.message || "API Error"); }
             if (i !== currentIndex) { chrome.storage.local.set({ activeKeyIndex: i }); }
             const data = await response.json();
@@ -127,7 +182,7 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
             
             // Smart Fallback: If AI returns "ERROR" (OCR failure), try next key if available
             if (content.toUpperCase().includes("ERROR")) {
-                if (attempt < keys.length - 1) {
+                if (attempt < validKeys.length - 1) {
                     console.warn(`Key index ${i} returned ERROR (OCR Failed). Retrying with next key...`);
                     continue;
                 }
@@ -137,7 +192,7 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
             return content.replace(/\D/g, '');
         } catch (e) { 
             console.warn(`Key index ${i} failed:`, e);
-            if (attempt === keys.length - 1) throw e; 
+            if (attempt === validKeys.length - 1) throw e; 
         }
     }
     throw new Error("All API keys exhausted (Rate Limited).");

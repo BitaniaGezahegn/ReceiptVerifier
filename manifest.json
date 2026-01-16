@@ -42,7 +42,7 @@
     },
     {
       "matches": ["https://my-managment.com/en/admin/report/pendingrequestrefill"],
-      "js": ["integration.js"],
+      "js": ["content_loader.js"],
       "run_at": "document_idle"
     },
     {
@@ -53,7 +53,16 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["offscreen.html", "cropper.js", "page_checker.js"],
+      "resources": [
+        "integration.js",
+        "cropper.js",
+        "offscreen.html",
+        "page_checker.js",
+        "controllers/*",
+        "ui/*",
+        "utils/*",
+        "services/*"
+      ],
       "matches": ["<all_urls>"]
     }
   ],

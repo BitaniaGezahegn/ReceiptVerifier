@@ -1,3 +1,5 @@
+import { BANK_XPATHS } from './utils/constants.js';
+
 console.log("[Offscreen] Script loaded.");
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -57,12 +59,12 @@ async function parseReceipt(url) {
     };
 
     return {
-      recipient: getText('//*[@id="invoice"]/table[1]/tbody/tr[4]/td/table/tbody/tr/td[2]/table/tbody/tr[2]/td'),
-      senderName: getText('//*[@id="invoice"]/table[1]/tbody/tr[4]/td/table/tbody/tr/td[1]/table/tbody/tr[2]/td'),
-      senderPhone: getText('//*[@id="invoice"]/table[1]/tbody/tr[4]/td/table/tbody/tr/td[1]/table/tbody/tr[4]/td'),
-      reason: getText('//*[@id="invoice"]/table[1]/tbody/tr[6]/td/table/tbody/tr[3]/td[2]'),
-      date: getText('//*[@id="invoice"]/table[1]/tbody/tr[3]/td/table/tbody/tr[1]/td[3]'),
-      amount: getText('//*[@id="invoice"]/table[1]/tbody/tr[3]/td/table/tbody/tr[3]/td[3]/strong[2]')
+      recipient: getText(BANK_XPATHS.recipient),
+      senderName: getText(BANK_XPATHS.senderName),
+      senderPhone: getText(BANK_XPATHS.senderPhone),
+      reason: getText(BANK_XPATHS.reason),
+      date: getText(BANK_XPATHS.date),
+      amount: getText(BANK_XPATHS.amount)
     };
   } catch (err) {
     if (err.name === 'AbortError') return { error: "Bank Request Timed Out" };
