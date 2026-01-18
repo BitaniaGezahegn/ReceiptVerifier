@@ -314,7 +314,15 @@ export class BatchProcessor {
         showNotification("Request Timed Out", "timeout");
         if (this.isBatchRunning) {
             this.activeBatchCount--;
-            setTimeout(() => this.processBatchQueue(), this.speedConfig.batchDelay);
+            
+            const applyBtn = document.querySelector('#filter_form button[type="submit"]');
+            if (applyBtn) {
+                showNotification("Timeout - Refreshing...", "process");
+                safeClick(applyBtn);
+                setTimeout(() => this.processBatchQueue(true), 3000);
+            } else {
+                setTimeout(() => this.processBatchQueue(), this.speedConfig.batchDelay);
+            }
         }
     }
 
@@ -379,14 +387,14 @@ export class BatchProcessor {
             }
 
             if (this.isBatchRunning) {
-                this.stopBatch();
-                const btn = document.getElementById('ebirr-batch-btn');
-                if (btn) { 
-                    btn.innerHTML = `<i class="fa fa-play"></i> Resume ${this.settings.fullAutoMode ? "Auto" : "Batch"}`; 
-                    btn.style.backgroundColor = "#ef4444"; 
-                    btn.style.borderColor = "#ef4444";
+                const applyBtn = document.querySelector('#filter_form button[type="submit"]');
+                if (applyBtn) {
+                    showNotification("AI Error - Refreshing...", "process");
+                    safeClick(applyBtn);
+                    setTimeout(() => this.processBatchQueue(true), 3000);
+                } else {
+                    setTimeout(() => this.processBatchQueue(), this.speedConfig.batchDelay);
                 }
-                showNotification("Batch Paused (AI Error)", "timeout");
             }
             return;
         }
@@ -561,12 +569,17 @@ export class BatchProcessor {
                     clearInterval(checkAlreadyProcessed);
                     
                     // Try to close the modal
-                    const closeBtns = modal.querySelectorAll('button, a.btn, input[type="button"], input[type="submit"], .btn');
-                    for (let btn of closeBtns) {
-                        const text = (btn.innerText || btn.value || "").toLowerCase();
-                        if (text.includes("close") || text.includes("ok") || btn.getAttribute('data-dismiss') === 'modal' || btn.getAttribute('data-bs-dismiss') === 'modal') {
-                            btn.click();
-                            break;
+                    const cancelBtn = modal.querySelector(SELECTORS.modalBtnCancel) || modal.querySelector('.btn-default, .close, button[data-dismiss="modal"]');
+                    if (cancelBtn) {
+                        safeClick(cancelBtn);
+                    } else {
+                        const closeBtns = modal.querySelectorAll('button, a.btn, input[type="button"], input[type="submit"], .btn');
+                        for (let btn of closeBtns) {
+                            const text = (btn.innerText || btn.value || "").toLowerCase();
+                            if (text.includes("cancel") || text.includes("close") || text.includes("ok") || btn.getAttribute('data-dismiss') === 'modal' || btn.getAttribute('data-bs-dismiss') === 'modal') {
+                                btn.click();
+                                break;
+                            }
                         }
                     }
 

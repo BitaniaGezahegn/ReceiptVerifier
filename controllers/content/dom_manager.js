@@ -183,8 +183,19 @@ export class DomManager {
                 const text = (modal.innerText || "").toLowerCase();
                 if (text.includes("already been processed") || text.includes("already processed")) {
                     showNotification("⚠️ Already Processed (Skipping)", "timeout");
-                    const closeBtn = modal.querySelector(SELECTORS.modalBtnCancel) || modal.querySelector('.btn-default, .close');
-                    if (closeBtn) safeClick(closeBtn);
+                    const cancelBtn = modal.querySelector(SELECTORS.modalBtnCancel) || modal.querySelector('.btn-default, .close, button[data-dismiss="modal"]');
+                    if (cancelBtn) {
+                        safeClick(cancelBtn);
+                    } else {
+                        const closeBtns = modal.querySelectorAll('button, a.btn, input[type="button"], input[type="submit"], .btn');
+                        for (let btn of closeBtns) {
+                            const text = (btn.innerText || btn.value || "").toLowerCase();
+                            if (text.includes("cancel") || text.includes("close") || text.includes("ok") || btn.getAttribute('data-dismiss') === 'modal' || btn.getAttribute('data-bs-dismiss') === 'modal') {
+                                btn.click();
+                                break;
+                            }
+                        }
+                    }
                     const row = this.findRowByImgUrl(imgUrl);
                     if (row) row.remove();
                     return;
@@ -329,8 +340,19 @@ export class DomManager {
             if (text.includes("already been processed") || text.includes("already processed")) {
                 clearInterval(checkInterval);
                 showNotification("⚠️ Already Processed (Closing)", "timeout");
-                const closeBtn = modal.querySelector(SELECTORS.modalBtnCancel) || modal.querySelector('.btn-default, .close');
-                if (closeBtn) safeClick(closeBtn);
+                const cancelBtn = modal.querySelector(SELECTORS.modalBtnCancel) || modal.querySelector('.btn-default, .close, button[data-dismiss="modal"]');
+                if (cancelBtn) {
+                    safeClick(cancelBtn);
+                } else {
+                    const closeBtns = modal.querySelectorAll('button, a.btn, input[type="button"], input[type="submit"], .btn');
+                    for (let btn of closeBtns) {
+                        const text = (btn.innerText || btn.value || "").toLowerCase();
+                        if (text.includes("cancel") || text.includes("close") || text.includes("ok") || btn.getAttribute('data-dismiss') === 'modal' || btn.getAttribute('data-bs-dismiss') === 'modal') {
+                            btn.click();
+                            break;
+                        }
+                    }
+                }
                 const row = this.findRowByImgUrl(imgUrl);
                 if (row) row.remove();
                 return;
