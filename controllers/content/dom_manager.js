@@ -168,7 +168,7 @@ export class DomManager {
                  const text = (swal.innerText || "").toLowerCase();
                  if (text.includes("already been processed") || text.includes("already processed")) {
                      clearInterval(interval);
-                     showNotification("⚠️ Already Processed (Skipping)", "timeout");
+                     showNotification("⚠️ Already Processed (Skipping)", "error");
                      const okBtn = swal.querySelector('.swal2-confirm, .swal-button--confirm, button.swal2-styled');
                      if (okBtn) safeClick(okBtn);
                      const row = this.findRowByImgUrl(imgUrl);
@@ -182,7 +182,7 @@ export class DomManager {
                 // Handle "Already Processed" inside modal
                 const text = (modal.innerText || "").toLowerCase();
                 if (text.includes("already been processed") || text.includes("already processed")) {
-                    showNotification("⚠️ Already Processed (Skipping)", "timeout");
+                    showNotification("⚠️ Already Processed (Skipping)", "error");
                     const cancelBtn = modal.querySelector(SELECTORS.modalBtnCancel) || modal.querySelector('.btn-default, .close, button[data-dismiss="modal"]');
                     if (cancelBtn) {
                         safeClick(cancelBtn);
@@ -339,7 +339,7 @@ export class DomManager {
             const text = (modal.innerText || "").toLowerCase();
             if (text.includes("already been processed") || text.includes("already processed")) {
                 clearInterval(checkInterval);
-                showNotification("⚠️ Already Processed (Closing)", "timeout");
+                showNotification("⚠️ Already Processed (Closing)", "error");
                 const cancelBtn = modal.querySelector(SELECTORS.modalBtnCancel) || modal.querySelector('.btn-default, .close, button[data-dismiss="modal"]');
                 if (cancelBtn) {
                     safeClick(cancelBtn);
@@ -363,7 +363,7 @@ export class DomManager {
                  const swalText = (swal.innerText || "").toLowerCase();
                  if (swalText.includes("already been processed") || swalText.includes("already processed")) {
                      clearInterval(checkInterval);
-                     showNotification("⚠️ Already Processed (Closing)", "timeout");
+                     showNotification("⚠️ Already Processed (Closing)", "error");
                      const okBtn = swal.querySelector('.swal2-confirm, .swal-button--confirm, button.swal2-styled');
                      if (okBtn) safeClick(okBtn);
                      const cancelBtn = modal.querySelector(SELECTORS.modalBtnCancel) || modal.querySelector('.btn-default');

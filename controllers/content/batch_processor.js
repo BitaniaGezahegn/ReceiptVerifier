@@ -311,7 +311,7 @@ export class BatchProcessor {
 
     handleTimeout(imgUrl, rowId) {
         this.handleImageFailure(imgUrl);
-        showNotification("Request Timed Out", "timeout");
+        showNotification("Request Timed Out", "error");
         if (this.isBatchRunning) {
             this.activeBatchCount--;
             
@@ -418,7 +418,7 @@ export class BatchProcessor {
         // BANK 404 - Retry Button
         if (result.status === "Bank 404") {
             this.saveRowState(row, result, "Retry Bank Check");
-            showNotification("Bank 404 - Retry Required", "timeout");
+            showNotification("Bank 404 - Retry Required", "error");
             if (this.settings.transactionSoundEnabled) playTransactionSound('error');
 
             if (row) {
@@ -473,7 +473,7 @@ export class BatchProcessor {
         // Handle Skips (PDF/Random)
         if (result.status === "Random" || result.status === "PDF") {
             if (isPdfSkip) {
-                 showNotification("Skipping PDF...", "timeout");
+                 showNotification("Skipping PDF...", "error");
                  if (row) {
                      row.dataset.ebirrSkipped = "true";
                      const container = row.querySelector('.ebirr-controller');
@@ -485,7 +485,7 @@ export class BatchProcessor {
             }
             
             if (isRandomSkip) {
-                 showNotification("Skipping Random...", "timeout");
+                 showNotification("Skipping Random...", "error");
                  if (row) {
                      row.dataset.ebirrSkipped = "true";
                      const container = row.querySelector('.ebirr-controller');
@@ -544,7 +544,7 @@ export class BatchProcessor {
              const isVerifiedStatus = result.originalStatus === 'Verified';
              
              if (!((isWrongRecip && this.settings.retryWrongRecipient) || (isVerifiedStatus && this.settings.retryVerified))) {
-                 showNotification(`Skipping High Repeat (${result.repeatCount})...`, "timeout");
+                 showNotification(`Skipping High Repeat (${result.repeatCount})...`, "error");
                  if (row) {
                      row.dataset.ebirrSkipped = "true";
                      const container = row.querySelector('.ebirr-controller');
@@ -597,7 +597,7 @@ export class BatchProcessor {
                         }
                     }
 
-                    showNotification("Already Processed - Skipped", "timeout");
+                    showNotification("Already Processed - Skipped", "error");
                     
                     if (row) {
                         row.dataset.ebirrSkipped = "true";
