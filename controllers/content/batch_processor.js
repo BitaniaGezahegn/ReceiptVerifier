@@ -435,7 +435,14 @@ export class BatchProcessor {
             }
 
             if (this.isBatchRunning) {
-                setTimeout(() => this.processBatchQueue(), 500);
+                const applyBtn = document.querySelector('#filter_form button[type="submit"]');
+                if (applyBtn) {
+                    showNotification("Bank 404 - Refreshing...", "process");
+                    safeClick(applyBtn);
+                    setTimeout(() => this.processBatchQueue(true), 3000);
+                } else {
+                    setTimeout(() => this.processBatchQueue(), 500);
+                }
             }
             return;
         }
