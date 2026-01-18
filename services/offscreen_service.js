@@ -38,6 +38,9 @@ export async function processImageWithOffscreen(dataUrl) {
 }
 
 export async function cropImageWithOffscreen(dataUrl, rect, tabId) {
+    if (!rect || rect.width <= 0 || rect.height <= 0) {
+        return;
+    }
     await setupOffscreenDocument();
     chrome.runtime.sendMessage({ action: 'cropImage', dataUrl: dataUrl, rect: rect, tabId: tabId });
 }

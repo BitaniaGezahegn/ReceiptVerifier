@@ -11,6 +11,7 @@ export class BatchProcessor {
         this.verificationState = new Map();
         this.isBatchRunning = false;
         this.activeBatchCount = 0;
+        this.lastCleanup = 0;
         
         // Default Settings
         this.settings = {
@@ -121,7 +122,7 @@ export class BatchProcessor {
         if (this.activeBatchCount === 0) {
             if (this.settings.fullAutoMode && this.isBatchRunning) {
                  if (fromReloadCheck) {
-                     startCooldownTimer(this.settings.autoRefreshInterval, () => this.processBatchQueue());
+                     startCooldownTimer(this.settings.autoRefreshInterval, () => this.processBatchQueue(), "Waiting for transactions");
                      return;
                  }
 
@@ -146,7 +147,7 @@ export class BatchProcessor {
         const amountSpan = row.querySelector(SELECTORS.amount);
         if (!amountSpan) { alert("Error: Could not find amount."); return; }
 
-        const rawAmount = amountSpan.innerText.replace(/\s/g, '');
+        const rawAmount = amountSpan.innerText.replace(/,/g, '').replace(/\s/g, '');
         const amount = parseFloat(rawAmount);
         const rowId = `req-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
@@ -194,7 +195,12 @@ export class BatchProcessor {
         
         Promise.all(imageLinks.map(url => 
             new Promise((resolve, reject) => {
-                const isPdf = url.toLowerCase().includes('.pdf') || url.toLowerCase().includes('.pdf?');
+                 const isPdf = url.toLowerCase().includes('.pdf') || url.toLowerCase().includes('.pdf?');
+                 if (isPdf && this.settings.skipPdfEnabled) {
+                     resolve(null);
+                     return;
+                 }
+
                 const action = isPdf ? "capturePdf" : "fetchImageBase64";
                 
                 try {
@@ -227,6 +233,7 @@ export class BatchProcessor {
                 } catch (e) { reject(e); }
             })
         ))
+
         .then(nestedImages => {
             const images = nestedImages.flat();
             try {
@@ -243,18 +250,24 @@ export class BatchProcessor {
                     }
                 });
             } catch (e) {
-                console.error("Extension context invalidated:", e);
+                console.error("Extension context invalidated (MultiVerify):", e);
                 this.handleExtensionInvalidated();
             }
         })
         .catch(err => {
-            console.error("Image fetch failed:", err);
-            if (err.message.includes("Extension context invalidated")) {
-                this.handleExtensionInvalidated();
+            const errMsg = (err && err.message) ? err.message : String(err);
+            
+            if (errMsg.includes("Extension context invalidated")) {
+                this.handleExtensionInvalidated(); // Handle extention context
                 return;
             }
-            showNotification("Image Load Failed", "error");
-            this.handleImageFailure(imgUrl);
+            
+            const isFrameError = errMsg.includes("Frame with ID 0") || errMsg.includes("showing error page");
+            if (isFrameError) console.warn("Frame Error (Skipping):", errMsg);
+            else console.error("Image fetch failed:", err);
+
+            showNotification(isFrameError ? "Frame Error - Skipping" : "Image Load Failed", "error"); // Image Error
+            this.handleImageFailure(imgUrl, true, isFrameError);
             
             if (this.isBatchRunning) {
                 this.activeBatchCount--;
@@ -276,7 +289,7 @@ export class BatchProcessor {
         showNotification("Operation Cancelled", "error");
     }
 
-    handleImageFailure(imgUrl) {
+    handleImageFailure(imgUrl, suppressNotification = false, shouldSkip = false) {
         const state = this.verificationState.get(imgUrl);
         if (!state) return;
         
@@ -285,11 +298,15 @@ export class BatchProcessor {
         
         const row = this.domManager.findRowByImgUrl(imgUrl);
         if (row) {
-            row.dataset.ebirrSkipped = "true";
-            const container = row.querySelector('.ebirr-controller');
-            if (container) container.innerHTML = '<span style="color:#ef4444; font-weight:bold; font-size:11px;">Load Failed</span>';
+            if (shouldSkip) row.dataset.ebirrSkipped = "true";
+            this.domManager.injectController(row, imgUrl, null, { 
+                onVerify: (r, u) => {
+                    delete row.dataset.ebirrSkipped;
+                    this.startVerification(r, u);
+                }
+            });
         }
-        showNotification("Image Request Failed", "error");
+        if (!suppressNotification) showNotification("Image Request Failed", "error");
     }
 
     handleTimeout(imgUrl, rowId) {
@@ -338,14 +355,79 @@ export class BatchProcessor {
             showNotification("⚠️ API Limit Reached", "error");
             if (this.settings.transactionSoundEnabled) playTransactionSound('error');
 
-            if (this.settings.fullAutoMode) {
+            if (this.settings.fullAutoMode || this.isBatchRunning) {
                 // 1 Minute Cooldown in Dynamic Island
                 startCooldownTimer(60, () => {
-                    if (this.settings.fullAutoMode && document.body.contains(row)) {
+                    if ((this.settings.fullAutoMode || this.isBatchRunning) && document.body.contains(row)) {
                         this.activeBatchCount++;
                         this.startVerification(row, imgUrl);
                     }
                 }, "API Cooldown");
+            }
+            return;
+        }
+
+        // AI ERROR - Stop batch and do not open modal
+        if (result.status === "AI Error") {
+            showNotification(result.statusText || "AI Service Error", "error");
+            if (this.settings.transactionSoundEnabled) playTransactionSound('error');
+
+            if (row) {
+                 row.dataset.ebirrSkipped = "true";
+                 const container = row.querySelector('.ebirr-controller');
+                 if (container) container.innerHTML = '<span style="color:#ef4444; font-weight:bold; font-size:11px;">AI Error</span>';
+            }
+
+            if (this.isBatchRunning) {
+                this.stopBatch();
+                const btn = document.getElementById('ebirr-batch-btn');
+                if (btn) { 
+                    btn.innerHTML = `<i class="fa fa-play"></i> Resume ${this.settings.fullAutoMode ? "Auto" : "Batch"}`; 
+                    btn.style.backgroundColor = "#ef4444"; 
+                    btn.style.borderColor = "#ef4444";
+                }
+                showNotification("Batch Paused (AI Error)", "timeout");
+            }
+            return;
+        }
+
+        // IMAGE LOAD FAILED - Retry
+        if (result.status === "Image Load Failed") {
+             showNotification("Image Load Failed - Retrying...", "error");
+             if (this.isBatchRunning) {
+                 setTimeout(() => this.processBatchQueue(), 2000);
+             }
+             return;
+        }
+
+        // BANK 404 - Retry Button
+        if (result.status === "Bank 404") {
+            this.saveRowState(row, result, "Retry Bank Check");
+            showNotification("Bank 404 - Retry Required", "timeout");
+            if (this.settings.transactionSoundEnabled) playTransactionSound('error');
+
+            if (row) {
+                 row.dataset.ebirrSkipped = "true";
+                 const container = row.querySelector('.ebirr-controller');
+                 if (container) {
+                    container.innerHTML = '';
+                    const btn = document.createElement('button');
+                    btn.className = 'btn btn-warning btn-xs';
+                    btn.style.cssText = "padding: 2px 8px; font-size: 11px; background-color: #f59e0b; border: none; color: white; border-radius: 3px; cursor: pointer;";
+                    btn.innerText = "Retry Bank Check";
+                    btn.onclick = (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        delete row.dataset.ebirrSkipped;
+                        this.startVerification(row, request.imgUrl);
+                    };
+                    this.attachTooltip(btn, result);
+                    container.appendChild(btn);
+                 }
+            }
+
+            if (this.isBatchRunning) {
+                setTimeout(() => this.processBatchQueue(), 500);
             }
             return;
         }
@@ -363,6 +445,8 @@ export class BatchProcessor {
         }
 
         showNotification("Verification Complete", "success");
+        this.saveRowState(row, result);
+        this.restoreRowState(row); // Update UI with label and tooltip
         
         // Handle Skips (PDF/Random)
         if (result.status === "Random" || result.status === "PDF") {
@@ -398,6 +482,8 @@ export class BatchProcessor {
                                 this.domManager.waitForModalAndFill(result, 'reject', request.imgUrl, request.extractedId, true);
                             }
                         };
+                        this.saveRowState(row, result, "Reject Random");
+                        this.attachTooltip(btn, result);
                         container.appendChild(btn);
                      }
                  }
@@ -455,6 +541,8 @@ export class BatchProcessor {
                                 this.domManager.waitForModalAndFill(result, 'reject', request.imgUrl, request.extractedId, true);
                             }
                         };
+                        this.saveRowState(row, result, `Reject Repeat (${result.repeatCount})`);
+                        this.attachTooltip(btn, result);
                         container.appendChild(btn);
                      }
                  }
@@ -466,6 +554,46 @@ export class BatchProcessor {
 
         // AUTOMATION
         const runAutomation = () => {
+            // Monitor for "Already Processed" message
+            const checkAlreadyProcessed = setInterval(() => {
+                const modal = document.querySelector(SELECTORS.modal);
+                if (modal && modal.innerText.includes("The stated payment has already been processed")) {
+                    clearInterval(checkAlreadyProcessed);
+                    
+                    // Try to close the modal
+                    const closeBtns = modal.querySelectorAll('button, a.btn, input[type="button"], input[type="submit"], .btn');
+                    for (let btn of closeBtns) {
+                        const text = (btn.innerText || btn.value || "").toLowerCase();
+                        if (text.includes("close") || text.includes("ok") || btn.getAttribute('data-dismiss') === 'modal' || btn.getAttribute('data-bs-dismiss') === 'modal') {
+                            btn.click();
+                            break;
+                        }
+                    }
+
+                    showNotification("Already Processed - Skipped", "timeout");
+                    
+                    if (row) {
+                        row.dataset.ebirrSkipped = "true";
+                        const container = row.querySelector('.ebirr-controller');
+                        if (container) container.innerHTML = '<span style="color:#f59e0b; font-weight:bold; font-size:11px;">Already Processed</span>';
+                        this.saveRowState(row, { status: "Already Processed", statusText: "Already Processed", color: "#f59e0b" });
+                    }
+
+                    // Force continue batch since row won't be removed
+                    if (this.isBatchRunning) {
+                        const applyBtn = document.querySelector('#filter_form button[type="submit"]');
+                        if (applyBtn) {
+                            showNotification("Refreshing Table...", "process");
+                            applyBtn.click();
+                            setTimeout(() => this.processBatchQueue(true), 2500);
+                        } else {
+                            setTimeout(() => this.processBatchQueue(), this.speedConfig.batchDelay);
+                        }
+                    }
+                }
+                if (!this.isBatchRunning || !document.body.contains(row)) clearInterval(checkAlreadyProcessed);
+            }, 500);
+
             if (isVerified || isAA) {
                 const confirmLink = this.domManager.columnIndexes.confirm ? row.querySelector(`td:nth-child(${this.domManager.columnIndexes.confirm}) a`) : null;
                 if (confirmLink) {
@@ -500,5 +628,234 @@ export class BatchProcessor {
         } else {
             runAutomation();
         }
+    }
+
+    saveRowState(row, data, buttonLabel = null) {
+        try {
+            const firstCell = row.querySelector('td:first-child');
+            if (!firstCell) return;
+            const pageTxId = firstCell.innerText.trim();
+            if (!pageTxId) return;
+
+            const cacheData = {
+                status: data.status,
+                statusText: data.statusText,
+                color: data.color,
+                buttonLabel: buttonLabel,
+                timestamp: Date.now(),
+                // Extended Data for Tooltips
+                originalStatus: data.originalStatus,
+                foundAmt: data.foundAmt,
+                senderName: data.senderName,
+                foundName: data.foundName,
+                timeStr: data.timeStr,
+                repeatCount: data.repeatCount,
+                id: data.id,
+                processedBy: data.processedBy,
+                bankCheckResult: data.bankCheckResult
+            };
+            localStorage.setItem(`ebirr_cache_${pageTxId}`, JSON.stringify(cacheData));
+        } catch (e) {
+            console.error("Failed to save row state", e);
+        }
+    }
+
+    restoreAllRows() {
+        // Run cleanup every 5 minutes to keep storage clean
+        if (Date.now() - this.lastCleanup > 300000) {
+            this.cleanupCache();
+            this.lastCleanup = Date.now();
+        }
+
+        const rows = document.querySelectorAll(SELECTORS.row);
+        rows.forEach(row => {
+            if (row.classList.contains('table-head')) return;
+            this.restoreRowState(row);
+        });
+    }
+
+    cleanupCache() {
+        const now = Date.now();
+        const EXPIRATION_MS = 300 * 60 * 1000; // 300 minutes
+        const keysToRemove = [];
+
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('ebirr_cache_')) {
+                try {
+                    const item = localStorage.getItem(key);
+                    if (item) {
+                        const data = JSON.parse(item);
+                        if (now - (data.timestamp || 0) > EXPIRATION_MS) {
+                            keysToRemove.push(key);
+                        }
+                    }
+                } catch (e) {
+                    keysToRemove.push(key);
+                }
+            }
+        }
+        
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+    }
+
+    restoreRowState(row) {
+        if (row.dataset.ebirrSkipped === "true") return;
+
+        const firstCell = row.querySelector('td:first-child');
+        if (!firstCell) return;
+        const pageTxId = firstCell.innerText.trim();
+        if (!pageTxId) return;
+
+        const cached = localStorage.getItem(`ebirr_cache_${pageTxId}`);
+        if (cached) {
+            try {
+                const data = JSON.parse(cached);
+
+                // Check Expiration (Lazy Check)
+                if (Date.now() - (data.timestamp || 0) > 30 * 60 * 1000) {
+                    localStorage.removeItem(`ebirr_cache_${pageTxId}`);
+                    return;
+                }
+
+                // RECONSTRUCT BUTTON LABEL IF MISSING (Fix for text-only issue)
+                if (!data.buttonLabel) {
+                    if (data.status === "Bank 404") data.buttonLabel = "Retry Bank Check";
+                    else if (data.status === "Random") data.buttonLabel = "Reject Random";
+                    else if (data.status === "Repeat") data.buttonLabel = `Reject Repeat (${data.repeatCount || 0})`;
+                    else if (data.status === "Under 50") data.buttonLabel = "Reject Under 50";
+                }
+
+                const container = row.querySelector('.ebirr-controller');
+                if (container) {
+                    row.dataset.ebirrSkipped = "true";
+                    
+                    // Safety: Remove any open tooltip to prevent orphans when replacing the element
+                    const existingTooltip = document.getElementById('ebirr-tooltip-popup');
+                    if (existingTooltip) existingTooltip.remove();
+                    
+                    if (data.buttonLabel) {
+                         container.innerHTML = '';
+                         const btn = document.createElement('button');
+                         const isWarning = data.status === "Bank 404" || data.status === "Repeat";
+                         btn.className = isWarning ? 'btn btn-warning btn-xs' : 'btn btn-danger btn-xs';
+                         const bgColor = isWarning ? '#f59e0b' : '#ef4444';
+                         btn.style.cssText = `padding: 2px 8px; font-size: 11px; background-color: ${bgColor}; border: none; color: white; border-radius: 3px; cursor: pointer;`;
+                         btn.innerText = data.buttonLabel;
+
+                         if (data.status === "Bank 404") {
+                             btn.onclick = (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            delete row.dataset.ebirrSkipped;
+                            localStorage.removeItem(`ebirr_cache_${pageTxId}`);
+                            const imgLink = row.querySelector(SELECTORS.imageLink);
+                            if (imgLink) this.startVerification(row, imgLink.href);
+                         };
+                         } else {
+                             // Reject Logic for Repeat/Random
+                             btn.onclick = (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const rejectLink = this.domManager.columnIndexes.reject ? row.querySelector(`td:nth-child(${this.domManager.columnIndexes.reject}) a`) : null;
+                                if (rejectLink) {
+                                    safeClick(rejectLink);
+                                    this.domManager.waitForModalAndFill(data, 'reject', null, data.id, true);
+                                }
+                             };
+                         }
+                         
+                         this.attachTooltip(btn, data);
+                         container.appendChild(btn);
+                         return;
+                    }
+
+                    const color = data.color || '#64748b';
+                    const text = data.statusText || data.status;
+                    
+                    container.innerHTML = '';
+                    const span = document.createElement('span');
+                    span.style.cssText = `color:${color}; font-weight:bold; font-size:11px; cursor:help;`;
+                    span.innerText = text;
+                    this.attachTooltip(span, data);
+                    container.appendChild(span);
+                }
+            } catch (e) {
+                console.error("Error restoring row state", e);
+            }
+        }
+    }
+
+    attachTooltip(element, data) {
+        let activeTooltip = null;
+
+        element.addEventListener('mouseenter', () => {
+            const existing = document.getElementById('ebirr-tooltip-popup');
+            if (existing) existing.remove();
+
+            const tooltip = document.createElement('div');
+            tooltip.id = 'ebirr-tooltip-popup';
+            tooltip.style.cssText = `
+                position: absolute;
+                background: rgba(15, 23, 42, 0.95);
+                color: #e2e8f0;
+                padding: 8px 12px;
+                border-radius: 8px;
+                font-size: 11px;
+                font-family: 'Segoe UI', sans-serif;
+                z-index: 2147483647;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+                border: 1px solid #334155;
+                pointer-events: none;
+                white-space: nowrap;
+                line-height: 1.5;
+                backdrop-filter: blur(4px);
+            `;
+            
+            let content = `<div style="font-weight:700; color:${data.color || '#fff'}; margin-bottom:6px; border-bottom: 1px solid #334155; padding-bottom: 6px; font-size:12px;">${data.statusText || data.status}</div>`;
+            
+            const fields = [
+                { label: 'Transaction ID', val: data.id },
+                { label: 'Original', val: data.originalStatus },
+                { label: 'Amount', val: data.foundAmt },
+                { label: 'Sender', val: data.senderName },
+                { label: 'Recipient', val: data.foundName },
+                { label: 'Time', val: data.timeStr },
+                { label: 'Repeats', val: data.repeatCount },
+                { label: 'Bank Result', val: data.bankCheckResult },
+                { label: 'Processed By', val: data.processedBy }
+            ];
+
+            content += '<table style="border-collapse: collapse; width: 100%;">';
+            fields.forEach(f => {
+                if (f.val !== undefined && f.val !== null && f.val !== '-' && f.val !== 'N/A' && f.val !== 0) {
+                    content += `<tr><td style="color:#94a3b8; padding-right:12px; padding-bottom:2px;">${f.label}:</td><td style="color:#f1f5f9; padding-bottom:2px;">${f.val}</td></tr>`;
+                }
+            });
+            content += '</table>';
+            
+            tooltip.innerHTML = content;
+            document.body.appendChild(tooltip);
+            activeTooltip = tooltip;
+            
+            const rect = element.getBoundingClientRect();
+            tooltip.style.top = `${rect.bottom + window.scrollY + 6}px`;
+            tooltip.style.left = `${rect.left + window.scrollX + (rect.width / 2)}px`;
+            tooltip.style.transform = 'translateX(-50%)';
+        });
+
+        element.addEventListener('mouseleave', () => {
+            if (activeTooltip) {
+                activeTooltip.remove();
+                activeTooltip = null;
+            }
+        });
+
+        element.addEventListener('mousedown', () => {
+            if (activeTooltip) {
+                activeTooltip.remove();
+                activeTooltip = null;
+            }
+        });
     }
 }

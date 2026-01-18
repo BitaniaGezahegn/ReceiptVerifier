@@ -1,5 +1,5 @@
 // c:\Users\BT\Desktop\Venv\zOther\Ebirr_Chrome_Verifier\controllers\background\message_router.js
-import { handleStartAI, handleManualId, handleProcessedId, handleScreenshotFlow } from './context_menu_controller.js';
+import { handleStartAI, handleManualId, handleProcessedId, handleScreenshotFlow, openAndVerifyFullData } from './context_menu_controller.js';
 import { handleIntegrationVerify, handleMultiIntegrationVerify } from './integration_controller.js';
 import { handlePdfCapture } from '../../services/pdf_service.js';
 import { callAIVisionWithRetry } from '../../services/ai_service.js';
@@ -12,6 +12,10 @@ export function routeMessage(request, sender, sendResponse) {
   switch (request.action) {
     case "captureCropped":
       const tabIdForCapture = sender.tab.id;
+      if (!request.rect || request.rect.width <= 0 || request.rect.height <= 0) {
+        console.warn("Capture aborted: Invalid crop dimensions", request.rect);
+        return;
+      }
       chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 100 }, async (dataUrl) => {
         if (!dataUrl) return;
         await setupOffscreenDocument();
@@ -69,12 +73,7 @@ export function routeMessage(request, sender, sendResponse) {
       break;
 
     case "continueDuplicate":
-      // This requires importing openAndVerifyFullData from context_menu_controller, 
-      // but it's not exported directly in the router signature. 
-      // We can import it at the top.
-      import('./context_menu_controller.js').then(module => {
-          module.openAndVerifyFullData(request.id, sender.tab.id, request.amount);
-      });
+      openAndVerifyFullData(request.id, sender.tab.id, request.amount);
       break;
 
     case "closeTab":

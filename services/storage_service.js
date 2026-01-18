@@ -67,6 +67,7 @@ export async function logTransactionResult(id, verificationResult, existingTx = 
         processedBy: auth.currentUser.email,
         processedByUid: auth.currentUser.uid,
         lastUpdated: now,
+        bankCheckResult: verificationResult.bankCheckResult || "",
         lastRepeat: existingTx ? now : null,
         imported: existingTx ? !!existingTx.imported : false,
         originalId: originalId || (existingTx && existingTx.originalId) || null,
@@ -102,6 +103,9 @@ export async function updateDailyStats(isSuccess, amount) {
         batch.set(userStatsRef, incrementData, { merge: true });
         await batch.commit();
     } catch (e) {
+        if (e.message && (e.message.includes("offline") || e.code === "unavailable")) {
+            throw new Error("OFFLINE");
+        }
         console.error("Stats Update Error:", e);
     }
 }
@@ -122,6 +126,9 @@ export async function saveTransaction(id, data) {
         // Use setDoc with merge to update or create
         await setDoc(doc(db, COL_TX, id), enrichedData, { merge: true });
     } catch (e) {
+        if (e.message && (e.message.includes("offline") || e.code === "unavailable")) {
+            throw new Error("OFFLINE");
+        }
         console.error("Save Tx Error:", e);
     }
 }
@@ -142,6 +149,9 @@ export async function getTransaction(id) {
             return null;
         }
     } catch (e) {
+        if (e.message && (e.message.includes("offline") || e.code === "unavailable")) {
+            throw new Error("OFFLINE");
+        }
         console.error("Storage Error:", e);
         return null;
     }
@@ -161,6 +171,10 @@ export async function getRecentTransactions(limitCount = 100) {
         });
         lastDoc = querySnapshot.docs[querySnapshot.docs.length - 1];
     } catch (e) {
+        if (e.message && (e.message.includes("offline") || e.code === "unavailable")) {
+            console.warn("Storage (getRecentTransactions): Client offline.");
+            return { transactions: [], lastDoc: null };
+        }
         console.error("Fetch Error:", e);
     }
     return { transactions, lastDoc };
@@ -185,6 +199,10 @@ export async function getMoreTransactions(startAfterDoc, limitCount = 50) {
         });
         lastDoc = querySnapshot.docs[querySnapshot.docs.length - 1];
     } catch (e) {
+        if (e.message && (e.message.includes("offline") || e.code === "unavailable")) {
+            console.warn("Storage (getMoreTransactions): Client offline.");
+            return { transactions: [], lastDoc: null };
+        }
         console.error("Fetch More Error:", e);
     }
     return { transactions, lastDoc };
@@ -261,6 +279,9 @@ export async function getStatsForDate(dateStr) { // dateStr is YYYY-MM-DD
         const docSnap = await getDoc(docRef);
         return docSnap.exists() ? docSnap.data() : null;
     } catch (e) {
+        if (e.message && (e.message.includes("offline") || e.code === "unavailable")) {
+            return null;
+        }
         console.error("Get Stats Error:", e);
         return null;
     }
@@ -272,6 +293,10 @@ export async function deleteTransaction(id) {
     try {
         await deleteDoc(doc(db, COL_TX, id));
     } catch (e) {
+        if (e.message && (e.message.includes("offline") || e.code === "unavailable")) {
+            console.warn("Storage (deleteTransaction): Client offline. Delete queued.");
+            return;
+        }
         console.error("Delete Tx Error:", e);
     }
 }

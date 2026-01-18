@@ -44,6 +44,7 @@ async function init() {
         onCancel: (url) => batchProcessor.cancelVerification(url),
         onBatchToggle: (btn) => batchProcessor.toggleBatch(btn)
     });
+    batchProcessor.restoreAllRows();
 
     // 3. Watch for dynamic content (SPA)
     const observer = new MutationObserver((mutations) => {
@@ -53,6 +54,7 @@ async function init() {
             onCancel: (url) => batchProcessor.cancelVerification(url),
             onBatchToggle: (btn) => batchProcessor.toggleBatch(btn)
         });
+        batchProcessor.restoreAllRows();
     });
     observer.observe(document.body, { childList: true, subtree: true });
 

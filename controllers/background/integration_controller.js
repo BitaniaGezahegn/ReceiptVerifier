@@ -6,6 +6,7 @@ import { getTransaction, logTransactionResult } from '../../services/storage_ser
 import { verifyTransactionData } from '../../services/verification.js';
 import { setupOffscreenDocument } from '../../services/offscreen_service.js';
 import { getMimeTypeFromDataUrl, getTimeAgo } from '../../utils/helpers.js';
+import { auth } from '../../services/firebase_config.js';
 
 export async function handleIntegrationVerify(request, tabId) {
   const { src, amount, rowId, dataUrl } = request;
@@ -115,7 +116,7 @@ export async function handleIntegrationVerify(request, tabId) {
         return;
     }
 
-    if (!extractedId || extractedId === "ERROR" || extractedId.trim() === "") {
+    if (!extractedId || extractedId === "ERROR" || extractedId.trim() === "" || !/^\d+$/.test(extractedId)) {
       const randomKey = `RANDOM_${Date.now()}`;
       const verificationResult = {
           status: "Random",
@@ -146,10 +147,7 @@ export async function handleIntegrationVerify(request, tabId) {
     updateStatus("Validating ID...");
     const banks = settingsCache.banks || DEFAULT_BANKS;
     
-    const matchedBank = banks.find(b => 
-      extractedId.length === parseInt(b.length) && 
-      b.prefixes.some(prefix => extractedId.startsWith(prefix))
-    );
+    const matchedBank = banks.find(b => extractedId.length === parseInt(b.length) && b.prefixes.some(prefix => extractedId.startsWith(prefix)));
     
     if (!matchedBank) {
       updateStatus("Invalid ID..."); // Only show if it actually fails
@@ -157,6 +155,7 @@ export async function handleIntegrationVerify(request, tabId) {
       const verificationResult = {
           status: "Random", // Treat as Random if bank format is wrong
           foundAmt: amount,
+          bankCheckResult: "No Matching Bank"
       };
       await logTransactionResult(randomKey, verificationResult, null, extractedId);
       
@@ -182,7 +181,33 @@ export async function handleIntegrationVerify(request, tabId) {
     }
 
     updateStatus("Checking Database...");
-    const old = await getTransaction(extractedId);
+    let old;
+    try {
+        old = await getTransaction(extractedId);
+    } catch (e) {
+        if (e.message === "OFFLINE") {
+            chrome.tabs.sendMessage(tabId, {
+                action: "integrationResult",
+                rowId,
+                success: true,
+                data: {
+                    status: "Offline",
+                    color: "#64748b",
+                    statusText: "⚠️ OFFLINE",
+                    foundAmt: "0",
+                    timeStr: "N/A",
+                    foundName: "Check Connection",
+                    senderName: "-",
+                    senderPhone: "-"
+                },
+                extractedId: extractedId,
+                imgUrl: src
+            }).catch(() => {});
+            return;
+        }
+        throw e;
+    }
+
     if (old) {
         const isIncomplete = !old.senderName || !old.bankDate;
         if (!isIncomplete) {
@@ -206,14 +231,16 @@ export async function handleIntegrationVerify(request, tabId) {
                 data: {
                     status: effectiveStatus,
                     originalStatus: old.status,
-                    color: "#ef4444",
+                    color: "#f59e0b",
                     statusText: statusText,
-                    foundAmt: old.amount,
-                    timeStr: getTimeAgo(old.timestamp, old.dateVerified),
+                    foundAmt: old.amount || "0",
+                    timeStr: getTimeAgo(old.timestamp, old.dateVerified) || "N/A",
                     foundName: old.recipientName || "Previously Processed",
                     senderName: old.senderName || "-",
                     senderPhone: old.senderPhone || "-",
-                    repeatCount: old.repeatCount
+                    repeatCount: old.repeatCount,
+                    id: extractedId || old.id || "N/A",
+                    processedBy: old.processedBy || (auth.currentUser ? auth.currentUser.email : "System")
                 },
                 extractedId,
                 imgUrl: src
@@ -264,15 +291,17 @@ export async function handleIntegrationVerify(request, tabId) {
       // CHECK FOR 404 / INVALID ID (Bank returned page but no data or "Not Found Page")
       if (!data.recipient) {
           const result = { // This is the verificationResult
-              status: "Invalid ID",
-              color: "#ef4444",
-              statusText: "🚫 INVALID ID (BANK 404)",
+              status: "Bank 404",
+              color: "#f59e0b",
+              statusText: "⚠️ BANK 404 (NOT FOUND)",
               foundAmt: "0",
               timeStr: "N/A",
-              foundName: "N/A",
+              foundName: "Retry Required",
               senderName: "-",
               senderPhone: "-",
-              repeatCount: 0
+              repeatCount: 0,
+              id: extractedId,
+              processedBy: auth.currentUser ? auth.currentUser.email : "System"
           };
           await logTransactionResult(extractedId, { ...result, foundAmt: 0 }, old);
 
@@ -289,6 +318,13 @@ export async function handleIntegrationVerify(request, tabId) {
 
       const maxHours = settingsCache.maxReceiptAge || 0.5;
       const result = verifyTransactionData(data, amount, settingsCache.targetName, maxHours);
+      
+      if (parseFloat(String(result.foundAmt).replace(/,/g, '')) < 50) {
+          result.status = "Under 50";
+          result.color = "#ef4444";
+          result.statusText = "❌ UNDER 50 ETB";
+      }
+
       if (result.status.startsWith("AA")) result.color = "#3b82f6";
 
       await logTransactionResult(extractedId, result, old);
@@ -297,7 +333,7 @@ export async function handleIntegrationVerify(request, tabId) {
         action: "integrationResult",
         rowId: rowId,
         success: true,
-        data: { ...result, repeatCount: 0 },
+        data: { ...result, repeatCount: 0, id: extractedId, processedBy: auth.currentUser ? auth.currentUser.email : "System" },
         extractedId: extractedId,
         imgUrl: src
       }).catch(() => {});
@@ -387,12 +423,12 @@ export async function handleMultiIntegrationVerify(request, tabId) {
 
             if (finalId === "RATE_LIMIT") {
                 errors.push(`Image ${i + 1}: API Rate Limit`);
-                continue;
+                break;
             }
             
             if (finalId === "SERVICE_ERROR") {
                 errors.push(`Image ${i + 1}: AI Service Error`);
-                continue;
+                break;
             }
             
             if (finalId && finalId !== "ERROR" && finalId.trim() !== "") {
@@ -403,12 +439,39 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                 // Match Bank
                 const matchedBank = banks.find(b => finalId.length === parseInt(b.length) && b.prefixes.some(prefix => finalId.startsWith(prefix)));
                 if (!matchedBank) {
-                    // Treat invalid format as Random/Unknown (likely AI hallucination)
+                    errors.push(`ID ${finalId}: No Matching Bank`);
+                    // Treat invalid format as skip, without logging
                     continue;
                 }
 
                 // Check DB for duplicates
-                const old = await getTransaction(finalId);
+                let old = null;
+                try {
+                    old = await getTransaction(finalId);
+                } catch (e) {
+                    if (e.message === "OFFLINE") {
+                        chrome.tabs.sendMessage(tabId, {
+                            action: "integrationResult",
+                            rowId,
+                            success: true,
+                            data: {
+                                status: "Offline",
+                                color: "#64748b",
+                                statusText: "⚠️ OFFLINE",
+                                foundAmt: "0",
+                                timeStr: "N/A",
+                                foundName: "Check Connection",
+                                senderName: "-",
+                                senderPhone: "-"
+                            },
+                            extractedId: finalId,
+                            imgUrl: primaryUrl
+                        }).catch(() => {});
+                        return;
+                    }
+                    console.error(e);
+                }
+
                 if (old) {
                     const isIncomplete = !old.senderName || !old.bankDate;
                     if (!isIncomplete) {
@@ -434,12 +497,33 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                 });
 
                 if (!data || !data.recipient) {
-                    // Treat bank 404 as Random/Unknown (likely invalid ID)
+                    errors.push(`ID ${finalId}: Bank 404`);
                     continue;
                 }
 
                 // Verify Data (Pass 0 as amount to just check validity of Name/Date)
                 const check = verifyTransactionData(data, 0, settingsCache.targetName, settingsCache.maxReceiptAge);
+                
+                const numericAmt = parseFloat(String(check.foundAmt).replace(/,/g, ''));
+
+                if (numericAmt < 50) {
+                     errors.push(`ID ${finalId}: Under 50`);
+                     if (!failedTransaction) {
+                         failedTransaction = {
+                             amount: numericAmt,
+                             timeStr: check.timeStr,
+                             recipientName: check.foundName,
+                             senderName: check.senderName,
+                             senderPhone: check.senderPhone,
+                             status: "Under 50",
+                             statusText: "❌ UNDER 50 ETB",
+                             id: finalId,
+                             existingTx: old,
+                             bankDate: check.bankDate
+                         };
+                     }
+                     continue;
+                }
                 
                 if (!check.nameOk || !check.timeOk) {
                      errors.push(`ID : ${check.status}`);
@@ -459,13 +543,16 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                      }
                 } else {
                      // Valid transaction found
-                     validTransactions.push({ id: finalId, amount: check.foundAmt, data: data, timeStr: check.timeStr, existingTx: old });
-                     totalFoundAmount += check.foundAmt;
+                     validTransactions.push({ id: finalId, amount: numericAmt, data: data, timeStr: check.timeStr, existingTx: old });
+                     totalFoundAmount += numericAmt;
                      
                      lastSenderName = data.senderName;
                      lastSenderPhone = data.senderPhone;
                      lastRecipientName = data.recipient;
                      lastTimeStr = check.timeStr;
+
+                     // Optimization: Stop processing if we have found the full amount
+                     if (totalFoundAmount >= amount) break;
                 }
             }
         } catch (e) {
@@ -493,6 +580,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
         let extractedId = "ERROR";
 
         if (isRateLimit) {
+
             finalStatus = "API Limit";
             finalColor = "#f59e0b";
         } else if (isServiceError) {
@@ -502,22 +590,23 @@ export async function handleMultiIntegrationVerify(request, tabId) {
         } else if (duplicateTransaction) {
             // Already logged in the loop. Just setting UI variables.
             finalStatus = "Repeat";
-            finalColor = "#ef4444";
+            finalColor = "#f59e0b";
             statusText = "🔁 DUPLICATE / REPEAT";
             
-            foundAmt = duplicateTransaction.amount;
-            timeStr = getTimeAgo(duplicateTransaction.timestamp, duplicateTransaction.dateVerified);
+            foundAmt = duplicateTransaction.amount || "0";
+            timeStr = getTimeAgo(duplicateTransaction.timestamp, duplicateTransaction.dateVerified) || "N/A";
             foundName = duplicateTransaction.recipientName || "Previously Processed";
             senderName = duplicateTransaction.senderName || "-";
             senderPhone = duplicateTransaction.senderPhone || "-";
             originalStatus = duplicateTransaction.status;
-            extractedId = duplicateTransaction.id;
+            extractedId = duplicateTransaction.id || "N/A";
         } else if (failedTransaction) {
             // This is a specific failure (e.g. Old Receipt) that needs to be logged.
             const failureResult = {
                 status: failedTransaction.status,
                 foundAmt: failedTransaction.amount,
                 senderName: failedTransaction.senderName,
+                bankCheckResult: failedTransaction.bankCheckResult,
                 senderPhone: failedTransaction.senderPhone,
                 foundName: failedTransaction.recipientName,
                 timeStr: failedTransaction.timeStr,
@@ -538,7 +627,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
             senderPhone = failedTransaction.senderPhone;
             extractedId = failedTransaction.id;
         } else if (isLoadError) {
-            finalStatus = "Random"; // Treat load error as Random to pause batch
+            finalStatus = "Image Load Failed"; // Treat load error as retryable
             finalColor = "#ef4444";
             statusText = "❌ IMAGE LOAD FAILED";
             // Do NOT log to DB for technical load errors
@@ -562,6 +651,10 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                     finalStatus = "Under 50";
                 } else if (errType.includes("AMT MISMATCH")) {
                     finalStatus = "Amount Mismatch";
+                } else if (errType.includes("Bank 404")) {
+                    finalStatus = "Bank 404";
+                    finalColor = "#f59e0b";
+                    statusText = "⚠️ BANK 404 (NOT FOUND)";
                 }
             }
         } else {
@@ -590,7 +683,9 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                 foundName: foundName,
                 senderName: senderName,
                 senderPhone: senderPhone,
-                repeatCount: maxRepeatCount
+                repeatCount: maxRepeatCount,
+                id: extractedId,
+                processedBy: auth.currentUser ? auth.currentUser.email : "System"
             },
             extractedId: extractedId,
             imgUrl: primaryUrl
@@ -608,17 +703,29 @@ export async function handleMultiIntegrationVerify(request, tabId) {
     let color = "#10b981";
     let statusText = images.length > 1 ? "✅ VERIFIED (MULTI)" : "✅ VERIFIED";
 
-    if (totalFoundAmount !== amount) {
-        finalStatus = `AA `;
+    if (Math.abs(totalFoundAmount - parseFloat(amount)) > 0.01) {
+        finalStatus = `AA is ${totalFoundAmount}`;
         color = "#3b82f6";
-        statusText = `⚠️ TOTAL: /`;
+        statusText = `⚠️ TOTAL: ${totalFoundAmount}/${amount}`;
     }
 
     chrome.tabs.sendMessage(tabId, {
         action: "integrationResult",
         rowId,
         success: true,
-        data: { status: finalStatus, color: color, statusText: statusText, foundAmt: totalFoundAmount, timeStr: lastTimeStr, foundName: lastRecipientName, senderName: lastSenderName, senderPhone: lastSenderPhone, repeatCount: 0 },
+        data: { 
+            status: finalStatus, 
+            color: color, 
+            statusText: statusText, 
+            foundAmt: totalFoundAmount, 
+            timeStr: lastTimeStr, 
+            foundName: lastRecipientName, 
+            senderName: lastSenderName, 
+            senderPhone: lastSenderPhone, 
+            repeatCount: 0,
+            id: validTransactions.map(t => t.id).join(', '),
+            processedBy: auth.currentUser ? auth.currentUser.email : "System"
+        },
         extractedId: validTransactions.map(t => t.id).join(', '),
         imgUrl: primaryUrl
     }).catch(() => {});

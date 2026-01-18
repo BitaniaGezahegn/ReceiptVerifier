@@ -5,7 +5,13 @@ import { settingsCache } from './settings_service.js';
 // RATE LIMITING QUEUE
 let aiQueue = Promise.resolve();
 let lastAiRequestTime = 0;
-const MIN_AI_INTERVAL = 4000; // 4 seconds = 15 requests per minute
+const MIN_AI_INTERVAL = 6000; // 6 seconds = 10 requests per minute (Safe for Gemini 2.0 Flash / 1.5 Flash)
+
+// Model Fallback List (Priority Order)
+const AI_MODELS = [
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash"
+];
 
 export async function callAIVisionWithRetry(base64, mimeType = 'image/jpeg') {
     const keys = settingsCache.apiKeys;
@@ -29,8 +35,10 @@ export async function callAIVisionWithRetry(base64, mimeType = 'image/jpeg') {
                 console.log("AI Result:", result);
                 resolve(result);
             } catch (e) {
-                if (e.message && (e.message.includes("Rate Limited") || e.message.includes("exhausted") || e.message.includes("restricted") || e.message.includes("quota") || e.message.includes("exceeded"))) {
+                if (e.message && (e.message.includes("Rate Limited") || e.message.includes("exhausted") || e.message.includes("restricted") || e.message.includes("quota") || e.message.includes("exceeded") || e.message.includes("overloaded"))) {
                     console.warn("AI Service Rate Limit:", e.message);
+                    // Add 60s backoff for the NEXT request
+                    lastAiRequestTime = Date.now() + 60000;
                     resolve("RATE_LIMIT");
                 } else {
                     console.error("AI Service Error:", e);
@@ -41,7 +49,7 @@ export async function callAIVisionWithRetry(base64, mimeType = 'image/jpeg') {
     });
 }
 
-export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedBanks, mimeType = 'image/jpeg') {
+export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedBanks, mimeType = 'image/jpeg', modelIndex = 0) {
     let keys = cachedKeys;
     let currentIndex = cachedIndex;
     let banks = cachedBanks;
@@ -65,7 +73,7 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
     const dynamicPrompt = `
     You are a specialized Vision OCR system for Ethiopian financial transaction verification.
     Your ONLY goal is to extract the **Transaction ID** (also called Reference Number or Receipt Number).
-
+    
     <|id_specs|>
     The valid Transaction ID MUST match one of these exact formats:
     ${specs}
@@ -132,8 +140,9 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
                     })
                 });
             } else {
-                // Gemini Call
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                // Gemini Call with Model Fallback
+                const currentModel = AI_MODELS[modelIndex] || AI_MODELS[0];
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
                 response = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -160,11 +169,18 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
 
             if (response.status === 429) { 
                 console.warn(`Key index ${i} rate limited.`); 
-                try {
-                    // Attempt to read error body for debugging
-                    const errBody = await response.json();
-                    console.warn("Rate Limit Details:", errBody);
-                } catch (e) {}
+                
+                // Try next model if available
+                if (modelIndex < AI_MODELS.length - 1) {
+                    console.warn(`Switching model from ${AI_MODELS[modelIndex]} to ${AI_MODELS[modelIndex + 1]} due to rate limit.`);
+                    return callAIVision(base64Image, cachedKeys, i, cachedBanks, mimeType, modelIndex + 1);
+                }
+
+                // If all models exhausted for this key, try next key (loop continues)
+                if (attempt < validKeys.length - 1) {
+                    console.warn(`All models exhausted for key index ${i}. Switching to next API key.`);
+                    continue;
+                }
                 continue; 
             }
             if (!response.ok) { const err = await response.json(); throw new Error(err.error?.message || "API Error"); }
@@ -176,9 +192,20 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
                 content = data.choices?.[0]?.message?.content?.trim();
             } else {
                 content = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-            }
+            } 
 
-            if (!content) throw new Error("No content in response");
+            if (!content) {
+                 console.warn(`Key index ${i} returned no content.`);
+                 // Try next model if available
+                 if (modelIndex < AI_MODELS.length - 1) {
+                    console.warn(`Switching model from ${AI_MODELS[modelIndex] || AI_MODELS[0]} to ${AI_MODELS[modelIndex + 1]} due to empty content.`);
+                    return callAIVision(base64Image, cachedKeys, i, cachedBanks, mimeType, modelIndex + 1);
+                 }
+                 
+                 // If no more models, try next key (or return ERROR if last key)
+                 if (attempt < validKeys.length - 1) continue;
+                 return "ERROR";
+            }
             
             // Smart Fallback: If AI returns "ERROR" (OCR failure), try next key if available
             if (content.toUpperCase().includes("ERROR")) {

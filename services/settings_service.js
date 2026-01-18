@@ -11,22 +11,31 @@ export let settingsCache = {
     targetName: TARGET_NAME,
 };
 
-export const initSettings = async () => {
-    const data = await chrome.storage.local.get(Object.keys(settingsCache));
-    Object.assign(settingsCache, data);
-    
-    // Ensure defaults
-    if (!settingsCache.apiKeys || settingsCache.apiKeys.length === 0) settingsCache.apiKeys = [DEFAULT_API_KEY];
-    if (!settingsCache.banks || settingsCache.banks.length === 0) settingsCache.banks = DEFAULT_BANKS;
-    if (!settingsCache.targetName) settingsCache.targetName = TARGET_NAME;
+let isInitialized = false;
 
-    chrome.storage.onChanged.addListener((changes, area) => {
-        if (area === 'local') {
-            for (const [key, { newValue }] of Object.entries(changes)) {
-                if (key in settingsCache) settingsCache[key] = newValue;
+export const initSettings = async () => {
+    if (isInitialized) return;
+    isInitialized = true;
+
+    try {
+        const data = await chrome.storage.local.get(Object.keys(settingsCache));
+        Object.assign(settingsCache, data);
+        
+        // Ensure defaults
+        if (!settingsCache.apiKeys || settingsCache.apiKeys.length === 0) settingsCache.apiKeys = [DEFAULT_API_KEY];
+        if (!settingsCache.banks || settingsCache.banks.length === 0) settingsCache.banks = DEFAULT_BANKS;
+        if (!settingsCache.targetName) settingsCache.targetName = TARGET_NAME;
+
+        chrome.storage.onChanged.addListener((changes, area) => {
+            if (area === 'local') {
+                for (const [key, { newValue }] of Object.entries(changes)) {
+                    if (key in settingsCache) settingsCache[key] = newValue;
+                }
             }
-        }
-    });
+        });
+    } catch (e) {
+        console.warn("Settings Init Error (likely No SW):", e);
+    }
 };
 
 export function isValidIdFormat(id) {

@@ -75,5 +75,9 @@ chrome.commands.onCommand.addListener((command) => {
   }
 });
 
+// 5. Clear Cache
+chrome.runtime.onMessage.addListener((request) => {
+    if (request.action === "clearCache") chrome.scripting.executeScript({ target: { allFrames: true, tabId: sender.tab.id }, func: UI.clearCache });
+});
 // 4. MESSAGE LISTENER
 chrome.runtime.onMessage.addListener(routeMessage);
