@@ -403,7 +403,14 @@ export class BatchProcessor {
         if (result.status === "Image Load Failed") {
              showNotification("Image Load Failed - Retrying...", "error");
              if (this.isBatchRunning) {
-                 setTimeout(() => this.processBatchQueue(), 2000);
+                 const applyBtn = document.querySelector('#filter_form button[type="submit"]');
+                 if (applyBtn) {
+                     showNotification("Image Error - Refreshing...", "process");
+                     safeClick(applyBtn);
+                     setTimeout(() => this.processBatchQueue(true), 3000);
+                 } else {
+                     setTimeout(() => this.processBatchQueue(), 2000);
+                 }
              }
              return;
         }
