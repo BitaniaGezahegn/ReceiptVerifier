@@ -1,7 +1,7 @@
 // c:\Users\BT\Desktop\Venv\zOther\Ebirr_Chrome_Verifier\controllers\content\batch_processor.js
 import { SELECTORS, TIMEOUT_MS, MAX_CONCURRENCY, SPEED_CONFIG } from '../../utils/constants.js';
 import { safeClick } from '../../utils/helpers.js';
-import { showNotification, startCooldownTimer } from '../../ui/content/notifications.js';
+import { showNotification, startCooldownTimer, hideNotification } from '../../ui/content/notifications.js';
 import { playTransactionSound } from '../../services/sound_service.js';
 import { processImageLocally } from '../../utils/image_processor.js';
 
@@ -54,6 +54,7 @@ export class BatchProcessor {
     startBatch() {
         this.isBatchRunning = true;
         this.activeBatchCount = 0;
+        hideNotification();
         this.processBatchQueue();
     }
 
@@ -126,14 +127,19 @@ export class BatchProcessor {
                      return;
                  }
 
-                 const applyBtn = document.querySelector('#filter_form button[type="submit"]');
+                 const applyBtn = document.querySelector('#filter_form button[type="submit"]') || 
+                                  document.querySelector('button[type="submit"].btn-primary') ||
+                                  Array.from(document.querySelectorAll('button')).find(b => b.innerText.trim().toLowerCase() === 'apply');
+
                  if (applyBtn) {
-                     applyBtn.click();
+                     safeClick(applyBtn);
                      const gapMs = Math.min(6000, Math.max(1000, this.settings.autoRefreshInterval * 100));
                      setTimeout(() => {
                          this.processBatchQueue(true);
                      }, gapMs);
                      return;
+                 } else {
+                     showNotification("Auto-Stop: Apply Button Missing", "error");
                  }
             }
 

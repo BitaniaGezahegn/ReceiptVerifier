@@ -1,4 +1,6 @@
 // c:\Users\BT\Desktop\Venv\zOther\Ebirr_Chrome_Verifier\ui\content\notifications.js
+let autoHideTimer = null;
+
 export function showNotification(message, type = 'process') {
     let island = document.getElementById('ebirr-dynamic-island');
     if (!island) {
@@ -23,6 +25,11 @@ export function showNotification(message, type = 'process') {
         document.body.appendChild(island);
     }
 
+    if (autoHideTimer) {
+        clearTimeout(autoHideTimer);
+        autoHideTimer = null;
+    }
+
     let icon = '<div class="ebirr-spinner"></div>';
     if (type === 'success') icon = '<span style="color:#4ade80; font-size:16px;">✓</span>';
     if (type === 'error') icon = '<span style="color:#f87171; font-size:16px;">✕</span>';
@@ -31,11 +38,20 @@ export function showNotification(message, type = 'process') {
     island.innerHTML = `${icon}<span>${message}</span>`;
     island.style.top = '20px';
 
-    // Notification persists until replaced or manually hidden
-    // Auto-hide removed per request
+    if (type === 'success' || type === 'error') {
+        autoHideTimer = setTimeout(() => {
+            if (island) island.style.top = '-80px';
+            autoHideTimer = null;
+        }, 3000);
+    }
 }
 
 export function startCooldownTimer(seconds, callback, label = "Refreshing in") {
+    if (autoHideTimer) {
+        clearTimeout(autoHideTimer);
+        autoHideTimer = null;
+    }
+
     let island = document.getElementById('ebirr-dynamic-island');
     if (!island) {
         showNotification(label + "...", "process");
@@ -80,4 +96,15 @@ export function startCooldownTimer(seconds, callback, label = "Refreshing in") {
             if (text) text.innerText = `${label} ${remaining}s`;
         }
     }, 1000);
+}
+
+export function hideNotification() {
+    let island = document.getElementById('ebirr-dynamic-island');
+    if (island) {
+        island.style.top = '-80px';
+    }
+    if (autoHideTimer) {
+        clearTimeout(autoHideTimer);
+        autoHideTimer = null;
+    }
 }
