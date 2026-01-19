@@ -585,7 +585,7 @@ export class BatchProcessor {
             // Monitor for "Already Processed" message
             const checkAlreadyProcessed = setInterval(() => {
                 const modal = document.querySelector(SELECTORS.modal);
-                if (modal && modal.innerText.includes("The stated payment has already been processed")) {
+                if (modal && (modal.innerText.includes("The stated payment has already been processed") || modal.innerText.includes("The stated payment not found"))) {
                     clearInterval(checkAlreadyProcessed);
                     
                     // Try to close the modal
@@ -603,13 +603,13 @@ export class BatchProcessor {
                         }
                     }
 
-                    showNotification("Already Processed - Skipped", "error");
+                    showNotification("Processed/Not Found - Skipped", "error");
                     
                     if (row) {
                         row.dataset.ebirrSkipped = "true";
                         const container = row.querySelector('.ebirr-controller');
-                        if (container) container.innerHTML = '<span style="color:#f59e0b; font-weight:bold; font-size:11px;">Already Processed</span>';
-                        this.saveRowState(row, { status: "Already Processed", statusText: "Already Processed", color: "#f59e0b" });
+                        if (container) container.innerHTML = '<span style="color:#f59e0b; font-weight:bold; font-size:11px;">Processed/Not Found</span>';
+                        this.saveRowState(row, { status: "Processed/Not Found", statusText: "Processed/Not Found", color: "#f59e0b" });
                     }
 
                     // Force continue batch since row won't be removed

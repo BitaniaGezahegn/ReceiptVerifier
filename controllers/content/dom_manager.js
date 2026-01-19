@@ -166,9 +166,9 @@ export class DomManager {
             const swal = document.querySelector('.swal2-popup, .swal-modal');
             if (swal && (swal.offsetParent !== null || window.getComputedStyle(swal).display !== 'none')) {
                  const text = (swal.innerText || "").toLowerCase();
-                 if (text.includes("already been processed") || text.includes("already processed")) {
+                 if (text.includes("already been processed") || text.includes("already processed") || text.includes("payment not found")) {
                      clearInterval(interval);
-                     showNotification("⚠️ Already Processed (Skipping)", "error");
+                     showNotification("⚠️ Processed/Not Found (Skipping)", "error");
                      const okBtn = swal.querySelector('.swal2-confirm, .swal-button--confirm, button.swal2-styled');
                      if (okBtn) safeClick(okBtn);
                      const row = this.findRowByImgUrl(imgUrl);
@@ -181,8 +181,8 @@ export class DomManager {
                 clearInterval(interval);
                 // Handle "Already Processed" inside modal
                 const text = (modal.innerText || "").toLowerCase();
-                if (text.includes("already been processed") || text.includes("already processed")) {
-                    showNotification("⚠️ Already Processed (Skipping)", "error");
+                if (text.includes("already been processed") || text.includes("already processed") || text.includes("payment not found")) {
+                    showNotification("⚠️ Processed/Not Found (Skipping)", "error");
                     const cancelBtn = modal.querySelector(SELECTORS.modalBtnCancel) || modal.querySelector('.btn-default, .close, button[data-dismiss="modal"]');
                     if (cancelBtn) {
                         safeClick(cancelBtn);
@@ -337,9 +337,9 @@ export class DomManager {
             }
 
             const text = (modal.innerText || "").toLowerCase();
-            if (text.includes("already been processed") || text.includes("already processed")) {
+            if (text.includes("already been processed") || text.includes("already processed") || text.includes("payment not found")) {
                 clearInterval(checkInterval);
-                showNotification("⚠️ Already Processed (Closing)", "error");
+                showNotification("⚠️ Processed/Not Found (Closing)", "error");
                 const cancelBtn = modal.querySelector(SELECTORS.modalBtnCancel) || modal.querySelector('.btn-default, .close, button[data-dismiss="modal"]');
                 if (cancelBtn) {
                     safeClick(cancelBtn);
@@ -361,9 +361,9 @@ export class DomManager {
             const swal = document.querySelector('.swal2-popup, .swal-modal');
             if (swal && (swal.offsetParent !== null || window.getComputedStyle(swal).display !== 'none')) {
                  const swalText = (swal.innerText || "").toLowerCase();
-                 if (swalText.includes("already been processed") || swalText.includes("already processed")) {
+                 if (swalText.includes("already been processed") || swalText.includes("already processed") || swalText.includes("payment not found")) {
                      clearInterval(checkInterval);
-                     showNotification("⚠️ Already Processed (Closing)", "error");
+                     showNotification("⚠️ Processed/Not Found (Closing)", "error");
                      const okBtn = swal.querySelector('.swal2-confirm, .swal-button--confirm, button.swal2-styled');
                      if (okBtn) safeClick(okBtn);
                      const cancelBtn = modal.querySelector(SELECTORS.modalBtnCancel) || modal.querySelector('.btn-default');
