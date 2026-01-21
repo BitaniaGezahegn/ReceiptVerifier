@@ -33,7 +33,7 @@
     ]
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' file: data: blob: https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://transactioninfo.ebirr.com https://my-managment.com https://*.my-managment.com https://api.groq.com"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' file: data: blob: https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://transactioninfo.ebirr.com https://my-managment.com https://*.my-managment.com https://api.groq.com https://api.telegram.org"
   },
   "content_scripts": [
     {

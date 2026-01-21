@@ -7,6 +7,7 @@ import { isValidIdFormat } from '../../services/settings_service.js';
 import { setupOffscreenDocument } from '../../services/offscreen_service.js';
 import * as UI from '../../ui/injectors.js';
 import * as TPL from '../../ui/templates.js';
+import { sendTelegramNotification } from '../../services/notification_service.js';
 
 export function routeMessage(request, sender, sendResponse) {
   switch (request.action) {
@@ -105,6 +106,16 @@ export function routeMessage(request, sender, sendResponse) {
     case "verifyMultiIntegration":
       handleMultiIntegrationVerify(request, sender.tab.id);
       break;
+
+    case "testTelegram":
+      console.log("🔔 Test Telegram Triggered");
+      sendTelegramNotification("🔔 *Test Notification*\n\nSystem is connected successfully!")
+        .then(() => sendResponse({ success: true }))
+        .catch(err => {
+            console.error("Telegram Error:", err);
+            sendResponse({ success: false, error: err.message });
+        });
+      return true;
 
     case "openRandomReview":
       const mgmtTabId = sender.tab.id;

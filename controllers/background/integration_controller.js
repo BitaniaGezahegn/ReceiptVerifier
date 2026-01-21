@@ -7,6 +7,7 @@ import { verifyTransactionData } from '../../services/verification.js';
 import { setupOffscreenDocument } from '../../services/offscreen_service.js';
 import { getMimeTypeFromDataUrl, getTimeAgo } from '../../utils/helpers.js';
 import { auth } from '../../services/firebase_config.js';
+import { sendTelegramNotification } from '../../services/notification_service.js';
 
 export async function handleIntegrationVerify(request, tabId) {
   const { src, amount, rowId, dataUrl } = request;
@@ -328,6 +329,11 @@ export async function handleIntegrationVerify(request, tabId) {
       if (result.status.startsWith("AA")) result.color = "#3b82f6";
 
       await logTransactionResult(extractedId, result, old);
+
+      if (result.status === "Verified" || result.status.startsWith("AA")) {
+          const msg = `✅ *Verified Transaction*\n\n*ID:* \`${extractedId}\`\n*Amount:* ${result.foundAmt} ETB\n*Sender:* ${result.senderName}\n*Time:* ${result.timeStr}`;
+          sendTelegramNotification(msg);
+      }
 
       chrome.tabs.sendMessage(tabId, {
         action: "integrationResult",
@@ -697,6 +703,13 @@ export async function handleMultiIntegrationVerify(request, tabId) {
     for (const tx of validTransactions) {
         const verificationResult = { status: "Verified", foundAmt: tx.amount, senderName: tx.data.senderName, senderPhone: tx.data.senderPhone, foundName: tx.data.recipient, timeStr: tx.timeStr, bankDate: tx.data.date };
         await logTransactionResult(tx.id, verificationResult, tx.existingTx);
+    }
+
+    if (validTransactions.length > 0) {
+        const total = validTransactions.reduce((sum, t) => sum + t.amount, 0);
+        const ids = validTransactions.map(t => t.id).join(', ');
+        const msg = `✅ *Verified Batch (Multi)*\n\n*IDs:* \`${ids}\`\n*Total Amount:* ${total} ETB\n*Count:* ${validTransactions.length}`;
+        sendTelegramNotification(msg);
     }
 
     let finalStatus = "Verified";
