@@ -164,7 +164,7 @@ export async function getRecentTransactions(limitCount = 100) {
     const transactions = [];
     let lastDoc = null;
     try {
-        const q = query(collection(db, COL_TX), orderBy("timestamp", "desc"), limit(limitCount));
+        const q = query(collection(db, COL_TX), orderBy("lastUpdated", "desc"), limit(limitCount));
         const querySnapshot = await getDocs(q);
         querySnapshot.forEach((doc) => {
             transactions.push(doc.data());
@@ -189,7 +189,7 @@ export async function getMoreTransactions(startAfterDoc, limitCount = 50) {
     try {
         const q = query(
             collection(db, COL_TX), 
-            orderBy("timestamp", "desc"), 
+            orderBy("lastUpdated", "desc"), 
             startAfter(startAfterDoc),
             limit(limitCount)
         );
@@ -226,7 +226,7 @@ export function onDailyStatsUpdate(dateStr, callback) {
 export function onRecentTransactionsUpdate(limitCount, callback) {
     if (!auth.currentUser) return () => {};
     
-    const q = query(collection(db, COL_TX), orderBy("timestamp", "desc"), limit(limitCount));
+    const q = query(collection(db, COL_TX), orderBy("lastUpdated", "desc"), limit(limitCount));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
         const transactions = [];
