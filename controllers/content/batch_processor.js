@@ -446,28 +446,17 @@ export class BatchProcessor {
 
         // BANK 404 - Retry Button
         if (result.status === "Bank 404") {
-            this.saveRowState(row, result, "Retry Bank Check");
+            this.saveRowState(row, result);
             showNotification("Bank 404 - Retry Required", "error");
             if (this.settings.transactionSoundEnabled) playTransactionSound('error');
 
             if (row) {
                  row.dataset.ebirrSkipped = "true";
-                 const container = row.querySelector('.ebirr-controller');
-                 if (container) {
-                    container.innerHTML = '';
-                    const btn = document.createElement('button');
-                    btn.className = 'btn btn-warning btn-xs';
-                    btn.style.cssText = "padding: 2px 8px; font-size: 11px; background-color: #f59e0b; border: none; color: white; border-radius: 3px; cursor: pointer;";
-                    btn.innerText = "Retry Bank Check";
-                    btn.onclick = (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        delete row.dataset.ebirrSkipped;
-                        this.startVerification(row, request.imgUrl);
-                    };
-                    this.attachTooltip(btn, result);
-                    container.appendChild(btn);
-                 }
+                 const span = document.createElement('span');
+                 span.style.cssText = `color:${result.color}; font-weight:bold; font-size:11px; cursor:help;`;
+                 span.innerText = result.statusText;
+                 this.attachTooltip(span, result);
+                 this.domManager.updateStatusIndicator(row, span);
             }
 
             if (this.isBatchRunning) {
@@ -516,27 +505,13 @@ export class BatchProcessor {
             if (isRandomSkip) {
                  showNotification("Skipping Random...", "error");
                  if (row) {
-                     row.dataset.ebirrSkipped = "true";
-                     const container = row.querySelector('.ebirr-controller');
-                     if (container) {
-                        container.innerHTML = '';
-                        const btn = document.createElement('button');
-                        btn.className = 'btn btn-danger btn-xs';
-                        btn.style.cssText = "padding: 2px 8px; font-size: 11px; background-color: #ef4444; border: none; color: white; border-radius: 3px; cursor: pointer;";
-                        btn.innerText = "Reject Random";
-                        btn.onclick = (e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            const rejectLink = this.domManager.columnIndexes.reject ? row.querySelector(`td:nth-child(${this.domManager.columnIndexes.reject}) a`) : null;
-                            if (rejectLink) {
-                                safeClick(rejectLink);
-                                this.domManager.waitForModalAndFill(result, 'reject', request.imgUrl, request.extractedId, true);
-                            }
-                        };
-                        this.saveRowState(row, result, "Reject Random");
-                        this.attachTooltip(btn, result);
-                        container.appendChild(btn);
-                     }
+                    row.dataset.ebirrSkipped = "true";
+                    this.saveRowState(row, result);
+                    const span = document.createElement('span');
+                    span.style.cssText = `color:${result.color}; font-weight:bold; font-size:11px; cursor:help;`;
+                    span.innerText = result.statusText;
+                    this.attachTooltip(span, result);
+                    this.domManager.updateStatusIndicator(row, span);
                  }
                  if (this.settings.transactionSoundEnabled) playTransactionSound('random');
                  setTimeout(() => this.processBatchQueue(), 500);
@@ -575,27 +550,13 @@ export class BatchProcessor {
              if (!((isWrongRecip && this.settings.retryWrongRecipient) || (isVerifiedStatus && this.settings.retryVerified))) {
                  showNotification(`Skipping High Repeat (${result.repeatCount})...`, "error");
                  if (row) {
-                     row.dataset.ebirrSkipped = "true";
-                     const container = row.querySelector('.ebirr-controller');
-                     if (container) {
-                        container.innerHTML = '';
-                        const btn = document.createElement('button');
-                        btn.className = 'btn btn-warning btn-xs';
-                        btn.style.cssText = "padding: 2px 8px; font-size: 11px; background-color: #f59e0b; border: none; color: white; border-radius: 3px; cursor: pointer;";
-                        btn.innerText = `Reject Repeat (${result.repeatCount})`;
-                        btn.onclick = (e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            const rejectLink = this.domManager.columnIndexes.reject ? row.querySelector(`td:nth-child(${this.domManager.columnIndexes.reject}) a`) : null;
-                            if (rejectLink) {
-                                safeClick(rejectLink);
-                                this.domManager.waitForModalAndFill(result, 'reject', request.imgUrl, request.extractedId, true);
-                            }
-                        };
-                        this.saveRowState(row, result, `Reject Repeat (${result.repeatCount})`);
-                        this.attachTooltip(btn, result);
-                        container.appendChild(btn);
-                     }
+                    row.dataset.ebirrSkipped = "true";
+                    this.saveRowState(row, result);
+                    const span = document.createElement('span');
+                    span.style.cssText = `color:${result.color}; font-weight:bold; font-size:11px; cursor:help;`;
+                    span.innerText = result.statusText;
+                    this.attachTooltip(span, result);
+                    this.domManager.updateStatusIndicator(row, span);
                  }
                  if (this.settings.transactionSoundEnabled) playTransactionSound('random');
                  setTimeout(() => this.processBatchQueue(), 500);
@@ -686,18 +647,18 @@ export class BatchProcessor {
         }
     }
 
-    saveRowState(row, data, buttonLabel = null) {
+    saveRowState(row, data) {
         try {
             const firstCell = row.querySelector('td:first-child');
             if (!firstCell) return;
-            const pageTxId = firstCell.innerText.trim();
+            const idSpan = firstCell.querySelector('.ebirr-tx-id');
+            const pageTxId = (idSpan ? idSpan.innerText : firstCell.innerText).trim();
             if (!pageTxId) return;
 
             const cacheData = {
                 status: data.status,
                 statusText: data.statusText,
                 color: data.color,
-                buttonLabel: buttonLabel,
                 timestamp: Date.now(),
                 // Extended Data for Tooltips
                 originalStatus: data.originalStatus,
@@ -760,7 +721,8 @@ export class BatchProcessor {
 
         const firstCell = row.querySelector('td:first-child');
         if (!firstCell) return;
-        const pageTxId = firstCell.innerText.trim();
+        const idSpan = firstCell.querySelector('.ebirr-tx-id');
+        const pageTxId = (idSpan ? idSpan.innerText : firstCell.innerText).trim();
         if (!pageTxId) return;
 
         const cached = localStorage.getItem(`ebirr_cache_${pageTxId}`);
@@ -774,67 +736,23 @@ export class BatchProcessor {
                     return;
                 }
 
-                // RECONSTRUCT BUTTON LABEL IF MISSING (Fix for text-only issue)
-                if (!data.buttonLabel) {
-                    if (data.status === "Bank 404") data.buttonLabel = "Retry Bank Check";
-                    else if (data.status === "Random") data.buttonLabel = "Reject Random";
-                    else if (data.status === "Repeat") data.buttonLabel = `Reject Repeat (${data.repeatCount || 0})`;
-                    else if (data.status === "Under 50") data.buttonLabel = "Reject Under 50";
-                }
-
-                const container = row.querySelector('.ebirr-controller');
-                if (container) {
+                const statusContainer = row.querySelector('.ebirr-status-indicator');
+                if (statusContainer) {
                     row.dataset.ebirrSkipped = "true";
                     
                     // Safety: Remove any open tooltip to prevent orphans when replacing the element
                     const existingTooltip = document.getElementById('ebirr-tooltip-popup');
                     if (existingTooltip) existingTooltip.remove();
                     
-                    if (data.buttonLabel) {
-                         container.innerHTML = '';
-                         const btn = document.createElement('button');
-                         const isWarning = data.status === "Bank 404" || data.status === "Repeat";
-                         btn.className = isWarning ? 'btn btn-warning btn-xs' : 'btn btn-danger btn-xs';
-                         const bgColor = isWarning ? '#f59e0b' : '#ef4444';
-                         btn.style.cssText = `padding: 2px 8px; font-size: 11px; background-color: ${bgColor}; border: none; color: white; border-radius: 3px; cursor: pointer;`;
-                         btn.innerText = data.buttonLabel;
-
-                         if (data.status === "Bank 404") {
-                             btn.onclick = (e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            delete row.dataset.ebirrSkipped;
-                            localStorage.removeItem(`ebirr_cache_${pageTxId}`);
-                            const imgLink = row.querySelector(SELECTORS.imageLink);
-                            if (imgLink) this.startVerification(row, imgLink.href);
-                         };
-                         } else {
-                             // Reject Logic for Repeat/Random
-                             btn.onclick = (e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                const rejectLink = this.domManager.columnIndexes.reject ? row.querySelector(`td:nth-child(${this.domManager.columnIndexes.reject}) a`) : null;
-                                if (rejectLink) {
-                                    safeClick(rejectLink);
-                                    this.domManager.waitForModalAndFill(data, 'reject', null, data.id, true);
-                                }
-                             };
-                         }
-                         
-                         this.attachTooltip(btn, data);
-                         container.appendChild(btn);
-                         return;
-                    }
-
+                    statusContainer.innerHTML = '';
                     const color = data.color || '#64748b';
                     const text = data.statusText || data.status;
                     
-                    container.innerHTML = '';
                     const span = document.createElement('span');
                     span.style.cssText = `color:${color}; font-weight:bold; font-size:11px; cursor:help;`;
                     span.innerText = text;
                     this.attachTooltip(span, data);
-                    container.appendChild(span);
+                    statusContainer.appendChild(span);
                 }
             } catch (e) {
                 console.error("Error restoring row state", e);

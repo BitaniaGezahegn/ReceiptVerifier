@@ -119,33 +119,67 @@ export class DomManager {
         }
     }
 
-    injectController(row, imgUrl, activeState, callbacks) {
-        const confirmTd = row.querySelector('td:nth-child(2)');
-        if (!confirmTd) return;
-
-        let container = confirmTd.querySelector('.ebirr-controller');
-        if (!container) {
-            container = document.createElement('div');
-            container.className = 'ebirr-controller';
-            container.style.cssText = "display:inline-block; margin-left:5px; vertical-align:middle;";
-            confirmTd.appendChild(container);
+    updateStatusIndicator(row, content) {
+        const statusContainer = row.querySelector('.ebirr-status-indicator');
+        if (!statusContainer) return;
+        statusContainer.innerHTML = '';
+        if (typeof content === 'string') {
+            statusContainer.innerHTML = content;
+        } else if (content instanceof HTMLElement) {
+            statusContainer.appendChild(content);
         }
-        container.innerHTML = '';
+    }
 
+    injectController(row, imgUrl, activeState, callbacks) {
+        const idTd = row.querySelector('td:first-child');
+        if (!idTd) return;
+
+        // If not injected, create the full structure
+        if (!idTd.querySelector('.ebirr-verify-btn')) {
+            // Wrap existing content to separate it from our controls
+            const idText = idTd.innerText.trim();
+            idTd.innerHTML = ''; // Clear the cell
+
+            const idSpan = document.createElement('span');
+            idSpan.className = 'ebirr-tx-id';
+            idSpan.innerText = idText;
+            idTd.appendChild(idSpan);
+
+            // Create status indicator container
+            const statusContainer = document.createElement('div');
+            statusContainer.className = 'ebirr-status-indicator';
+            statusContainer.style.cssText = "display: inline-block; margin-left: 8px; vertical-align: middle; min-width: 110px; text-align: left;";
+            idTd.appendChild(statusContainer);
+
+            // Create verify button
+            const btn = document.createElement('button');
+            btn.innerText = "Verify";
+            btn.className = 'btn btn-primary btn-xs ebirr-verify-btn';
+            btn.style.cssText = "padding: 2px 8px; font-size: 11px; background-color: #2563eb; border: none; color: white; border-radius: 3px; cursor: pointer; margin-left: 5px; vertical-align: middle;";
+            btn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                delete row.dataset.ebirrSkipped;
+                const pageTxId = idSpan.innerText.trim();
+                if (pageTxId) {
+                    localStorage.removeItem(`ebirr_cache_${pageTxId}`);
+                }
+                callbacks.onVerify(row, imgUrl);
+            };
+            idTd.appendChild(btn);
+        }
+
+        // Now, update the status indicator based on the current state
         if (activeState && activeState.status === 'processing') {
             const btn = document.createElement('button');
             btn.innerText = "Cancel";
             btn.className = 'btn btn-danger btn-xs'; 
             btn.style.cssText = "padding: 2px 8px; font-size: 11px; background-color: #ef4444; border: none; color: white; border-radius: 3px; cursor: pointer;";
             btn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); callbacks.onCancel(imgUrl); };
-            container.appendChild(btn);
+            this.updateStatusIndicator(row, btn);
         } else {
-            const btn = document.createElement('button');
-            btn.innerText = "Verify";
-            btn.className = 'btn btn-success btn-xs';
-            btn.style.cssText = "padding: 2px 8px; font-size: 11px; background-color: #3b82f6; border: none; color: white; border-radius: 3px; cursor: pointer;";
-            btn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); callbacks.onVerify(row, imgUrl); };
-            container.appendChild(btn);
+            // Clear status if not processing. It will be filled by restoreRowState if needed.
+            this.updateStatusIndicator(row, '');
         }
     }
 
