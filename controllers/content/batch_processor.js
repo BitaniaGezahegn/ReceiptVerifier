@@ -813,9 +813,9 @@ export class BatchProcessor {
             activeTooltip = tooltip;
             
             const rect = element.getBoundingClientRect();
-            tooltip.style.top = `${rect.bottom + window.scrollY + 6}px`;
             tooltip.style.left = `${rect.left + window.scrollX + (rect.width / 2)}px`;
-            tooltip.style.transform = 'translateX(-50%)';
+            tooltip.style.top = `${rect.top + window.scrollY}px`;
+            tooltip.style.transform = 'translate(-50%, -100%) translateY(-8px)';
         });
 
         element.addEventListener('mouseleave', () => {
