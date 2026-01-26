@@ -11,7 +11,8 @@
     "tabs",
     "offscreen",
     "downloads",
-    "identity"
+    "identity",
+    "alarms"
   ],
   "action": {
     "default_popup": "popup.html"

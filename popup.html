@@ -428,6 +428,20 @@
         <div class="setting-control"><input type="number" id="pending-limit-input" value="5" min="1" class="input-styled" style="width: 45px; text-align: center;" title="Alert Threshold"><label class="toggle-switch"><input type="checkbox" id="pending-alert-checkbox"><span class="slider"></span></label></div>
       </div>
       <div class="setting-row">
+        <div class="setting-row-label"><span class="setting-name">Telegram Pending Alert</span><span class="setting-description">Send pending alerts to Telegram.</span></div>
+        <div class="setting-control"><button id="test-telegram-alert-btn" class="input-styled" style="padding: 2px 6px; font-size: 10px; margin-right: 8px; cursor: pointer;">Test</button><label class="toggle-switch"><input type="checkbox" id="telegram-pending-alert-checkbox"><span class="slider"></span></label></div>
+      </div>
+      <div class="setting-row">
+        <div class="setting-row-label"><span class="setting-name">Sleep Mode (Safety)</span><span class="setting-description">Alert if inactive or stuck.</span></div>
+        <label class="toggle-switch"><input type="checkbox" id="sleep-mode-checkbox"><span class="slider"></span></label>
+      </div>
+      <div id="sleep-mode-options" style="margin-left: 15px; border-left: 2px solid #f1f5f9; padding-left: 15px; display: none;">
+        <div class="setting-row"><div class="setting-row-label"><span class="setting-name">↳ Inactivity Timeout (min)</span></div><input type="number" id="sleep-timeout-input" value="10" min="1" class="input-styled" style="width: 50px; text-align: center;"></div>
+        <div class="setting-row"><div class="setting-row-label"><span class="setting-name">↳ Repeat Interval (min)</span></div><input type="number" id="sleep-repeat-input" value="2" min="1" class="input-styled" style="width: 50px; text-align: center;"></div>
+        <div class="setting-row"><div class="setting-row-label"><span class="setting-name">↳ Max Alerts</span></div><input type="number" id="sleep-max-retries-input" value="10" min="1" class="input-styled" style="width: 50px; text-align: center;"></div>
+        <div class="setting-row"><div class="setting-row-label"><span class="setting-name">↳ Max Consecutive Errors</span></div><input type="number" id="sleep-failure-limit-input" value="5" min="1" class="input-styled" style="width: 50px; text-align: center;"></div>
+      </div>
+      <div class="setting-row">
         <div class="setting-row-label"><span class="setting-name">Sound Effects</span><span class="setting-description">Play sounds for success or failure.</span></div>
         <label class="toggle-switch"><input type="checkbox" id="transaction-sound-checkbox"><span class="slider"></span></label>
       </div>

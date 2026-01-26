@@ -9,6 +9,14 @@ export class SettingsUI {
         this.headlessCheckbox = document.getElementById('headless-checkbox');
         this.pendingAlertCheckbox = document.getElementById('pending-alert-checkbox');
         this.pendingLimitInput = document.getElementById('pending-limit-input');
+        this.telegramPendingAlertCheckbox = document.getElementById('telegram-pending-alert-checkbox');
+        this.testTelegramAlertBtn = document.getElementById('test-telegram-alert-btn');
+        this.sleepModeCheckbox = document.getElementById('sleep-mode-checkbox');
+        this.sleepModeOptions = document.getElementById('sleep-mode-options');
+        this.sleepTimeoutInput = document.getElementById('sleep-timeout-input');
+        this.sleepRepeatInput = document.getElementById('sleep-repeat-input');
+        this.sleepMaxRetriesInput = document.getElementById('sleep-max-retries-input');
+        this.sleepFailureLimitInput = document.getElementById('sleep-failure-limit-input');
         this.batchReverseCheckbox = document.getElementById('batch-reverse-checkbox');
         this.transactionSoundCheckbox = document.getElementById('transaction-sound-checkbox');
         this.skipPdfCheckbox = document.getElementById('skip-pdf-checkbox');
@@ -34,6 +42,7 @@ export class SettingsUI {
         this.bankUrlInput = document.getElementById('bank-url');
         this.addBankBtn = document.getElementById('add-bank-btn');
         this.banksList = document.getElementById('banks-list');
+        this.editingBankIndex = null;
     }
 
     async init(data) {
@@ -51,6 +60,13 @@ export class SettingsUI {
         this.headlessCheckbox.checked = data.headlessMode !== false;
         this.pendingAlertCheckbox.checked = data.pendingAlertEnabled || false;
         if (data.pendingLimit) this.pendingLimitInput.value = data.pendingLimit;
+        this.telegramPendingAlertCheckbox.checked = data.telegramPendingAlert || false;
+        this.sleepModeCheckbox.checked = data.sleepModeEnabled || false;
+        if (data.sleepModeTimeout) this.sleepTimeoutInput.value = data.sleepModeTimeout;
+        if (data.sleepModeRepeat) this.sleepRepeatInput.value = data.sleepModeRepeat;
+        if (data.sleepModeMaxRetries) this.sleepMaxRetriesInput.value = data.sleepModeMaxRetries;
+        if (data.sleepModeFailureLimit) this.sleepFailureLimitInput.value = data.sleepModeFailureLimit;
+        if (this.sleepModeOptions) this.sleepModeOptions.style.display = this.sleepModeCheckbox.checked ? 'block' : 'none';
         this.batchReverseCheckbox.checked = data.batchReverse || false;
         this.transactionSoundCheckbox.checked = data.transactionSoundEnabled || false;
         this.skipPdfCheckbox.checked = data.skipPdfEnabled || false;
@@ -84,6 +100,18 @@ export class SettingsUI {
         this.headlessCheckbox.onchange = () => chrome.storage.local.set({ headlessMode: this.headlessCheckbox.checked });
         this.pendingAlertCheckbox.onchange = () => chrome.storage.local.set({ pendingAlertEnabled: this.pendingAlertCheckbox.checked });
         this.pendingLimitInput.onchange = () => chrome.storage.local.set({ pendingLimit: parseInt(this.pendingLimitInput.value) || 5 });
+        this.telegramPendingAlertCheckbox.onchange = () => chrome.storage.local.set({ telegramPendingAlert: this.telegramPendingAlertCheckbox.checked });
+        this.testTelegramAlertBtn.onclick = () => {
+            chrome.runtime.sendMessage({ action: "testPendingAlert", count: 5 });
+        };
+        this.sleepModeCheckbox.onchange = () => {
+            chrome.storage.local.set({ sleepModeEnabled: this.sleepModeCheckbox.checked });
+            if (this.sleepModeOptions) this.sleepModeOptions.style.display = this.sleepModeCheckbox.checked ? 'block' : 'none';
+        };
+        this.sleepTimeoutInput.onchange = () => chrome.storage.local.set({ sleepModeTimeout: parseInt(this.sleepTimeoutInput.value) || 10 });
+        this.sleepRepeatInput.onchange = () => chrome.storage.local.set({ sleepModeRepeat: parseInt(this.sleepRepeatInput.value) || 2 });
+        this.sleepMaxRetriesInput.onchange = () => chrome.storage.local.set({ sleepModeMaxRetries: parseInt(this.sleepMaxRetriesInput.value) || 10 });
+        this.sleepFailureLimitInput.onchange = () => chrome.storage.local.set({ sleepModeFailureLimit: parseInt(this.sleepFailureLimitInput.value) || 5 });
         this.batchReverseCheckbox.onchange = () => chrome.storage.local.set({ batchReverse: this.batchReverseCheckbox.checked });
         this.transactionSoundCheckbox.onchange = () => chrome.storage.local.set({ transactionSoundEnabled: this.transactionSoundCheckbox.checked });
         this.skipPdfCheckbox.onchange = () => chrome.storage.local.set({ skipPdfEnabled: this.skipPdfCheckbox.checked });
@@ -256,7 +284,10 @@ export class SettingsUI {
             div.innerHTML = `
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
                     <span style="font-weight:bold; color:#334155;">${bank.name}</span>
-                    <button class="del-bank-btn" data-index="${index}" style="background:none; border:none; color:#ef4444; cursor:pointer; font-weight:bold;">×</button>
+                    <div style="display:flex; gap:5px;">
+                        <button class="edit-bank-btn" data-index="${index}" style="background:none; border:none; cursor:pointer; font-size:14px;" title="Edit">✏️</button>
+                        <button class="del-bank-btn" data-index="${index}" style="background:none; border:none; color:#ef4444; cursor:pointer; font-weight:bold;" title="Delete">×</button>
+                    </div>
                 </div>
                 <div style="color:#64748b;">Len: ${bank.length} | Pre: ${bank.prefixes.join(', ')}</div>
                 <div style="color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${bank.url}</div>
@@ -270,9 +301,42 @@ export class SettingsUI {
                 const idx = parseInt(e.target.dataset.index);
                 const newBanks = banks.filter((_, i) => i !== idx);
                 await chrome.storage.local.set({ banks: newBanks });
+                if (this.editingBankIndex === idx) this.cancelEdit();
                 this.loadBanks();
             };
         });
+
+        this.banksList.querySelectorAll('.edit-bank-btn').forEach(btn => {
+            btn.onclick = (e) => {
+                const idx = parseInt(e.target.closest('button').dataset.index);
+                this.startEditBank(banks[idx], idx);
+            };
+        });
+    }
+
+    startEditBank(bank, index) {
+        this.bankNameInput.value = bank.name;
+        this.bankLenInput.value = bank.length;
+        this.bankPrefixesInput.value = bank.prefixes.join(', ');
+        this.bankUrlInput.value = bank.url;
+        
+        this.editingBankIndex = index;
+        this.addBankBtn.innerText = "Update Bank";
+        this.addBankBtn.style.backgroundColor = "#3b82f6";
+        this.addBankBtn.style.color = "white";
+        
+        this.bankNameInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    cancelEdit() {
+        this.editingBankIndex = null;
+        this.addBankBtn.innerText = "Add Bank";
+        this.addBankBtn.style.backgroundColor = "";
+        this.addBankBtn.style.color = "";
+        this.bankNameInput.value = ""; 
+        this.bankLenInput.value = ""; 
+        this.bankPrefixesInput.value = ""; 
+        this.bankUrlInput.value = "";
     }
 
     async addBank() {
@@ -285,11 +349,19 @@ export class SettingsUI {
 
         const prefixes = prefixesStr.split(',').map(p => p.trim()).filter(p => p);
         const d = await chrome.storage.local.get(['banks']);
-        const currentBanks = d.banks || [];
-        currentBanks.push({ name, length: len, prefixes, url });
+        let currentBanks = d.banks || [];
+        
+        if (this.editingBankIndex !== null) {
+            if (this.editingBankIndex >= 0 && this.editingBankIndex < currentBanks.length) {
+                currentBanks[this.editingBankIndex] = { name, length: len, prefixes, url };
+            }
+        } else {
+            currentBanks.push({ name, length: len, prefixes, url });
+        }
+        
         await chrome.storage.local.set({ banks: currentBanks });
         
-        this.bankNameInput.value = ""; this.bankLenInput.value = ""; this.bankPrefixesInput.value = ""; this.bankUrlInput.value = "";
+        this.cancelEdit();
         this.loadBanks();
     }
 }
