@@ -86,10 +86,7 @@ async function scanAndInject() {
         const targetCell = cells[idIndex];
         if (!targetCell) return;
         
-        // Try to find the specific span, otherwise fall back to textContent.
-        // This makes it compatible with the main integration script which wraps the ID.
-        const idSpan = targetCell.querySelector('.ebirr-tx-id');
-        const txId = (idSpan ? idSpan.textContent : targetCell.textContent).trim();
+        const txId = targetCell.textContent.trim();
         
         // If there's no text content or it's not a numeric ID, skip this row.
         // This handles empty cells and cells with placeholder text like "N/A".
