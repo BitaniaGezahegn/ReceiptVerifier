@@ -21,6 +21,7 @@ export class SettingsUI {
         this.retryVerifiedCheckbox = document.getElementById('retry-verified-checkbox');
         this.autoRefreshInput = document.getElementById('auto-refresh-interval');
         this.speedSelect = document.getElementById('speed-select');
+        this.clearCacheBtn = document.getElementById('clear-cache-btn');
         
         this.keyInput = document.getElementById('new-key-input');
         this.addKeyBtn = document.getElementById('add-key-btn');
@@ -109,6 +110,39 @@ export class SettingsUI {
         };
 
         this.speedSelect.onchange = () => chrome.storage.local.set({ processingSpeed: this.speedSelect.value });
+
+        if (!this.clearCacheBtn && this.speedSelect && this.speedSelect.parentNode) {
+            const container = document.createElement('div');
+            container.style.cssText = "margin-top: 15px; border-top: 1px solid #e2e8f0; padding-top: 15px;";
+            
+            this.clearCacheBtn = document.createElement('button');
+            this.clearCacheBtn.id = 'clear-cache-btn';
+            this.clearCacheBtn.innerText = 'Clear Cache';
+            this.clearCacheBtn.style.cssText = "width: 100%; padding: 8px; background-color: #ef4444; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; transition: background-color 0.2s;";
+            
+            this.clearCacheBtn.onmouseover = () => this.clearCacheBtn.style.backgroundColor = "#dc2626";
+            this.clearCacheBtn.onmouseout = () => this.clearCacheBtn.style.backgroundColor = "#ef4444";
+
+            container.appendChild(this.clearCacheBtn);
+            this.speedSelect.parentNode.appendChild(container);
+        }
+
+        if (this.clearCacheBtn) {
+            this.clearCacheBtn.onclick = () => {
+                chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+                    if (tabs[0]) {
+                        chrome.tabs.sendMessage(tabs[0].id, { action: "updateSettings", settings: { clearCache: true } });
+                        const originalText = this.clearCacheBtn.innerText;
+                        this.clearCacheBtn.innerText = "Cache Cleared!";
+                        this.clearCacheBtn.style.backgroundColor = "#10b981";
+                        setTimeout(() => {
+                            this.clearCacheBtn.innerText = originalText;
+                            this.clearCacheBtn.style.backgroundColor = "#ef4444";
+                        }, 1500);
+                    }
+                });
+            };
+        }
 
         this.addKeyBtn.onclick = () => this.addKey();
         if (this.exportKeysBtn) this.exportKeysBtn.onclick = () => this.exportKeys();
