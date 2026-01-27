@@ -29,8 +29,8 @@ export class SettingsUI {
         this.retryVerifiedCheckbox = document.getElementById('retry-verified-checkbox');
         this.autoRefreshInput = document.getElementById('auto-refresh-interval');
         this.speedSelect = document.getElementById('speed-select');
-        this.clearCacheBtn = document.getElementById('clear-cache-btn');
         
+        this.clearCacheBtn = document.getElementById('clear-cache-btn');
         this.keyInput = document.getElementById('new-key-input');
         this.addKeyBtn = document.getElementById('add-key-btn');
         this.keysList = document.getElementById('keys-list');
@@ -139,43 +139,25 @@ export class SettingsUI {
 
         this.speedSelect.onchange = () => chrome.storage.local.set({ processingSpeed: this.speedSelect.value });
 
-        if (!this.clearCacheBtn && this.speedSelect && this.speedSelect.parentNode) {
+        // Inject Clear Cache button into Data & Keys section if it doesn't exist
+        if (!this.clearCacheBtn && this.keysList && this.keysList.parentNode) {
             const container = document.createElement('div');
-            container.style.cssText = "margin-top: 15px; border-top: 1px solid #e2e8f0; padding-top: 15px;";
+            container.style.cssText = "margin-top: 15px; padding-top: 15px; border-top: 1px dashed #e2e8f0;";
             
             this.clearCacheBtn = document.createElement('button');
             this.clearCacheBtn.id = 'clear-cache-btn';
-            this.clearCacheBtn.innerText = 'Clear Cache';
-            this.clearCacheBtn.style.cssText = "width: 100%; padding: 8px; background-color: #ef4444; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; transition: background-color 0.2s;";
+            this.clearCacheBtn.innerText = 'Clear Page Cache';
+            this.clearCacheBtn.style.cssText = "width: 100%; background-color: #ef4444; color: white; padding: 8px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 12px; transition: background-color 0.2s;";
             
             this.clearCacheBtn.onmouseover = () => this.clearCacheBtn.style.backgroundColor = "#dc2626";
             this.clearCacheBtn.onmouseout = () => this.clearCacheBtn.style.backgroundColor = "#ef4444";
 
             container.appendChild(this.clearCacheBtn);
-            this.speedSelect.parentNode.appendChild(container);
+            this.keysList.parentNode.appendChild(container);
         }
 
         if (this.clearCacheBtn) {
-            this.clearCacheBtn.onclick = () => {
-                chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-                    if (tabs[0]) {
-                        chrome.tabs.sendMessage(tabs[0].id, { action: "updateSettings", settings: { clearCache: true } }, (response) => {
-                            if (chrome.runtime.lastError) {
-                                console.warn("Clear Cache: Content script not ready or not injected.", chrome.runtime.lastError.message);
-                                return;
-                            }
-                            
-                            const originalText = this.clearCacheBtn.innerText;
-                            this.clearCacheBtn.innerText = "Cache Cleared!";
-                            this.clearCacheBtn.style.backgroundColor = "#10b981";
-                            setTimeout(() => {
-                                this.clearCacheBtn.innerText = originalText;
-                                this.clearCacheBtn.style.backgroundColor = "#ef4444";
-                            }, 1500);
-                        });
-                    }
-                });
-            };
+            this.clearCacheBtn.onclick = () => this.showClearCacheConfirmation();
         }
 
         this.addKeyBtn.onclick = () => this.addKey();
@@ -403,5 +385,69 @@ export class SettingsUI {
         
         this.cancelEdit();
         this.loadBanks();
+    }
+
+    showClearCacheConfirmation() {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15, 23, 42, 0.95); z-index:10000; display:flex; flex-direction:column; align-items:center; justify-content:center; font-family:'Segoe UI', sans-serif;";
+        
+        const modal = document.createElement('div');
+        modal.style.cssText = "background:white; color:#334155; padding:25px; border-radius:12px; width:320px; text-align:center; box-shadow:0 20px 25px -5px rgba(0, 0, 0, 0.1);";
+        
+        modal.innerHTML = `
+            <div style="font-size:40px; margin-bottom:15px;">🧹</div>
+            <h3 style="margin-top:0; font-size:18px; color:#1e293b; margin-bottom:10px;">Clear Page Cache?</h3>
+            <p style="font-size:13px; color:#64748b; margin-bottom:20px; line-height:1.5;">
+                This will remove temporary status flags (like "Repeat", "Under 50") stored in your browser for the current page.
+                <br><br>
+                <strong style="color:#ef4444;">Note:</strong> This does <u>not</u> delete any transaction logs from the database.
+            </p>
+            <div style="display:flex; gap:10px; justify-content:center;">
+                <button id="cc-cancel" style="padding:8px 16px; border:1px solid #cbd5e1; background:white; color:#475569; border-radius:6px; cursor:pointer; font-weight:600; font-size:12px;">Cancel</button>
+                <button id="cc-confirm" style="padding:8px 16px; border:none; background:#ef4444; color:white; border-radius:6px; cursor:pointer; font-weight:600; font-size:12px;">Yes, Clear Cache</button>
+            </div>
+        `;
+        
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        document.getElementById('cc-cancel').onclick = () => overlay.remove();
+        
+        document.getElementById('cc-confirm').onclick = () => {
+            overlay.remove();
+            this.executeClearCache();
+        };
+    }
+
+    executeClearCache() {
+        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+            if (tabs[0]) {
+                chrome.tabs.sendMessage(tabs[0].id, { action: "updateSettings", settings: { clearCache: true } }, (response) => {
+                    if (chrome.runtime.lastError) {
+                        console.warn("Clear Cache: Content script not ready.", chrome.runtime.lastError.message);
+                        if (this.clearCacheBtn) {
+                            const originalText = this.clearCacheBtn.innerText;
+                            this.clearCacheBtn.innerText = "Refresh Page!";
+                            this.clearCacheBtn.style.backgroundColor = "#f59e0b";
+                            setTimeout(() => {
+                                this.clearCacheBtn.innerText = originalText;
+                                this.clearCacheBtn.style.backgroundColor = "#ef4444";
+                            }, 2000);
+                        }
+                        return;
+                    }
+                    
+                    if (this.clearCacheBtn) {
+                        const originalText = this.clearCacheBtn.innerText;
+                        this.clearCacheBtn.innerText = "Cache Cleared!";
+                        this.clearCacheBtn.style.backgroundColor = "#10b981";
+                        setTimeout(() => {
+                            this.clearCacheBtn.innerText = originalText;
+                            this.clearCacheBtn.style.backgroundColor = "#ef4444";
+                        }, 1500);
+                    }
+                });
+            }
+        });
     }
 }

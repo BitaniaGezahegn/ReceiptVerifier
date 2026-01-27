@@ -1,5 +1,5 @@
 // c:\Users\BT\Desktop\Venv\zOther\Ebirr_Chrome_Verifier\ui\popup\history_ui.js
-import { getRecentTransactions, getMoreTransactions, deleteTransaction, saveTransaction, getTransaction } from '../../services/storage_service.js';
+import { getRecentTransactions, getMoreTransactions, deleteTransaction, saveTransaction } from '../../services/storage_service.js';
 import { getTimeAgo } from '../../utils/helpers.js';
 
 export class HistoryUI {
@@ -22,6 +22,7 @@ export class HistoryUI {
             lastDoc: null
         };
         this.RECENT_TX_CACHE_TTL = 30 * 1000;
+        this.cleanupMigrationUI();
     }
 
     init() {
@@ -48,13 +49,24 @@ export class HistoryUI {
         const importBtn = document.getElementById('import-btn');
         if (importBtn) this.setupImport(importBtn);
 
-        const migrateBtn = document.getElementById('migrate-btn');
-        if (migrateBtn) this.setupMigration(migrateBtn);
+        this.cleanupMigrationUI();
 
         document.getElementById('clear-btn').onclick = () => this.clearHistory();
         if (this.clearRecentBtn) this.clearRecentBtn.onclick = () => this.clearHistory();
 
         this.setupEditModal();
+    }
+
+    cleanupMigrationUI() {
+        const migrateBtn = document.getElementById('migrate-btn');
+        if (migrateBtn) {
+            const prev = migrateBtn.previousElementSibling;
+            if (prev && (prev.tagName === 'H3' || prev.tagName === 'H4' || prev.tagName === 'STRONG') && 
+                (prev.innerText.includes('Migration') || prev.innerText.includes('Database'))) {
+                prev.remove();
+            }
+            migrateBtn.remove();
+        }
     }
 
     async loadData() {
@@ -432,127 +444,6 @@ export class HistoryUI {
             
             overlay.remove();
             location.reload();
-        };
-    }
-
-    setupMigration(migrateBtn) {
-        migrateBtn.onclick = async () => {
-            const localData = await chrome.storage.local.get(null);
-            const txKeys = Object.keys(localData).filter(k => k.startsWith('tx_') && typeof localData[k] === 'object');
-            const total = txKeys.length;
-
-            if (total === 0) {
-                alert("No local history found to upload.");
-                return;
-            }
-
-            const modal = document.createElement('div');
-            modal.id = 'migration-modal';
-            modal.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15, 23, 42, 0.95); z-index:10000; display:flex; flex-direction:column; align-items:center; justify-content:center; color:white; font-family:'Segoe UI', sans-serif;";
-            modal.innerHTML = `
-                <div style="background:white; color:#334155; padding:25px; border-radius:12px; width:320px; text-align:center; box-shadow:0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);">
-                    <h3 style="margin-top:0; font-size:18px; color:#1e293b;">Syncing History</h3>
-                    <p style="font-size:13px; color:#64748b; margin-bottom:20px;">
-                        Checking ${total.toLocaleString()} local records against the database...
-                    </p>
-                    
-                    <div style="background:#e2e8f0; border-radius:999px; height:8px; width:100%; margin-bottom:10px; overflow:hidden;">
-                        <div id="mig-progress" style="background:#8b5cf6; height:100%; width:0%; transition:width 0.2s;"></div>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; margin-bottom:20px;">
-                        <span id="mig-count">0 / </span>
-                        <span id="mig-percent">0%</span>
-                    </div>
-
-                    <div style="text-align:left; background:#f8fafc; padding:10px; border-radius:6px; font-size:11px; color:#475569; margin-bottom:20px;">
-                        <div>🔍 Checked: <b id="mig-checked">0</b></div>
-                        <div>☁️ Uploaded: <b id="mig-uploaded" style="color:#10b981;">0</b></div>
-                        <div>⏭️ Skipped: <b id="mig-skipped" style="color:#64748b;">0</b></div>
-                    </div>
-
-                    <button id="mig-cancel" style="padding:8px 16px; border:1px solid #cbd5e1; background:white; color:#475569; border-radius:6px; cursor:pointer; font-weight:600; font-size:12px;">Cancel</button>
-                </div>
-            `;
-            document.body.appendChild(modal);
-
-            let processed = 0;
-            let uploaded = 0;
-            let skipped = 0;
-            let isCancelled = false;
-
-            const updateUI = () => {
-                const pct = Math.round((processed / total) * 100);
-                document.getElementById('mig-progress').style.width = `%`;
-                document.getElementById('mig-count').innerText = ` / `;
-                document.getElementById('mig-percent').innerText = `%`;
-                document.getElementById('mig-checked').innerText = processed;
-                document.getElementById('mig-uploaded').innerText = uploaded;
-                document.getElementById('mig-skipped').innerText = skipped;
-            };
-
-            document.getElementById('mig-cancel').onclick = () => {
-                isCancelled = true;
-                modal.remove();
-                alert("Migration cancelled.");
-                location.reload();
-            };
-
-            const BATCH_SIZE = 10;
-            
-            const processItem = async (key) => {
-                if (isCancelled) return;
-                const item = localData[key];
-                try {
-                    const exists = await getTransaction(item.id);
-                    
-                    if (exists) {
-                        skipped++;
-                    } else {
-                        const payload = {
-                            id: item.id,
-                            amount: item.amount,
-                            status: item.status,
-                            timestamp: item.timestamp || new Date(item.dateVerified).getTime(),
-                            dateVerified: item.dateVerified,
-                            senderName: item.senderName || null,
-                            senderPhone: item.senderPhone || null,
-                            recipientName: item.recipientName || null,
-                            bankDate: item.bankDate || null,
-                            repeatCount: item.repeatCount || 0
-                        };
-                        await saveTransaction(item.id, payload);
-                        uploaded++;
-                    }
-                } catch (e) {
-                    console.error("Migration error for", item.id, e);
-                    skipped++;
-                } finally {
-                    processed++;
-                    updateUI();
-                }
-            };
-
-            for (let i = 0; i < total; i += BATCH_SIZE) {
-                if (isCancelled) break;
-                const chunk = txKeys.slice(i, i + BATCH_SIZE);
-                await Promise.all(chunk.map(key => processItem(key)));
-            }
-
-            if (!isCancelled) {
-                const btn = document.getElementById('mig-cancel');
-                btn.innerText = "Close";
-                btn.style.background = "#3b82f6";
-                btn.style.color = "white";
-                btn.style.border = "none";
-                btn.onclick = () => {
-                    modal.remove();
-                    location.reload();
-                };
-                
-                const h3 = modal.querySelector('h3');
-                h3.innerText = "Migration Complete! 🎉";
-                h3.style.color = "#10b981";
-            }
         };
     }
 
