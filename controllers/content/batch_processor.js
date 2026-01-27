@@ -12,6 +12,7 @@ export class BatchProcessor {
         this.isBatchRunning = false;
         this.activeBatchCount = 0;
         this.lastCleanup = 0;
+        this.lastTelegramAlert = 0;
         
         // Default Settings
         this.settings = {
@@ -25,18 +26,15 @@ export class BatchProcessor {
             retryVerified: false,
             fullAutoMode: false,
             autoRefreshInterval: 30,
-            processingSpeed: 'normal'
+            processingSpeed: 'normal',
+            telegramPendingAlert: false,
+            pendingLimit: 5
         };
 
         this.speedConfig = SPEED_CONFIG.normal;
     }
 
     updateSettings(newSettings) {
-        if (newSettings.clearCache) {
-            this.clearAllCache();
-            return;
-        }
-
         Object.assign(this.settings, newSettings);
         if (newSettings.processingSpeed) {
             this.speedConfig = SPEED_CONFIG[newSettings.processingSpeed] || SPEED_CONFIG.normal;
@@ -68,6 +66,26 @@ export class BatchProcessor {
         if (window.ebirrRefreshTimer) {
             clearInterval(window.ebirrRefreshTimer);
             window.ebirrRefreshTimer = null;
+        }
+    }
+
+    checkPendingAlert() {
+        if (!this.settings.telegramPendingAlert) return;
+
+        const rows = document.querySelectorAll(SELECTORS.row);
+        let pendingCount = 0;
+
+        rows.forEach(row => {
+            if (row.classList.contains('table-head')) return;
+            const isVerified = row.querySelector('.ebirr-summary');
+            const isSkipped = row.dataset.ebirrSkipped === "true";
+            if (!isVerified && !isSkipped) pendingCount++;
+        });
+
+        const now = Date.now();
+        if (pendingCount >= this.settings.pendingLimit && (now - this.lastTelegramAlert > 60000)) { // 1 minute cooldown
+            this.lastTelegramAlert = now;
+            chrome.runtime.sendMessage({ action: "sendPendingAlert", count: pendingCount });
         }
     }
 
@@ -735,35 +753,6 @@ export class BatchProcessor {
         }
         
         keysToRemove.forEach(k => localStorage.removeItem(k));
-    }
-
-    clearAllCache() {
-        let count = 0;
-        const keysToRemove = [];
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && key.startsWith('ebirr_cache_')) {
-                keysToRemove.push(key);
-            }
-        }
-        
-        keysToRemove.forEach(k => {
-            localStorage.removeItem(k);
-            count++;
-        });
-
-        showNotification(`Cache Cleared (${count} items)`, "success");
-
-        // Reset UI
-        const rows = document.querySelectorAll(SELECTORS.row);
-        rows.forEach(row => {
-            if (row.classList.contains('table-head')) return;
-            const imgLink = row.querySelector(SELECTORS.imageLink);
-            if (imgLink && !this.verificationState.has(imgLink.href)) {
-                delete row.dataset.ebirrSkipped;
-                this.domManager.injectController(row, imgLink.href, null, { onVerify: (r, u) => this.startVerification(r, u) });
-            }
-        });
     }
 
     restoreRowState(row) {

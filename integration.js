@@ -13,7 +13,8 @@ async function init() {
     const result = await chrome.storage.local.get([
         'pendingAlertEnabled', 'pendingLimit', 'batchReverse', 'transactionSoundEnabled', 
         'skipPdfEnabled', 'skipRandomEnabled', 'skipRepeatEnabled', 'repeatLimit', 
-        'retryWrongRecipient', 'retryVerified', 'fullAutoMode', 'autoRefreshInterval', 'processingSpeed'
+        'retryWrongRecipient', 'retryVerified', 'fullAutoMode', 'autoRefreshInterval', 'processingSpeed',
+        'telegramPendingAlert'
     ]);
 
     const settings = {
@@ -27,7 +28,9 @@ async function init() {
         retryVerified: result.retryVerified || false,
         fullAutoMode: result.fullAutoMode || false,
         autoRefreshInterval: parseInt(result.autoRefreshInterval) || 30,
-        processingSpeed: result.processingSpeed || 'normal'
+        processingSpeed: result.processingSpeed || 'normal',
+        telegramPendingAlert: result.telegramPendingAlert || false,
+        pendingLimit: parseInt(result.pendingLimit) || 5
     };
     
     batchProcessor.updateSettings(settings);
@@ -45,6 +48,7 @@ async function init() {
         onBatchToggle: (btn) => batchProcessor.toggleBatch(btn)
     });
     batchProcessor.restoreAllRows();
+    batchProcessor.checkPendingAlert();
 
     // 3. Watch for dynamic content (SPA)
     const observer = new MutationObserver((mutations) => {
@@ -55,6 +59,7 @@ async function init() {
             onBatchToggle: (btn) => batchProcessor.toggleBatch(btn)
         });
         batchProcessor.restoreAllRows();
+        batchProcessor.checkPendingAlert();
     });
     observer.observe(document.body, { childList: true, subtree: true });
 
@@ -73,6 +78,7 @@ async function init() {
         if (changes.fullAutoMode) newSettings.fullAutoMode = changes.fullAutoMode.newValue;
         if (changes.autoRefreshInterval) newSettings.autoRefreshInterval = parseInt(changes.autoRefreshInterval.newValue) || 30;
         if (changes.processingSpeed) newSettings.processingSpeed = changes.processingSpeed.newValue;
+        if (changes.telegramPendingAlert) newSettings.telegramPendingAlert = changes.telegramPendingAlert.newValue;
         
         batchProcessor.updateSettings(newSettings);
 
@@ -81,8 +87,14 @@ async function init() {
                 enabled: changes.pendingAlertEnabled ? changes.pendingAlertEnabled.newValue : domManager.pendingAlertSettings.enabled,
                 limit: changes.pendingLimit ? parseInt(changes.pendingLimit.newValue) : domManager.pendingAlertSettings.limit
             });
+            batchProcessor.updateSettings({ pendingLimit: changes.pendingLimit ? parseInt(changes.pendingLimit.newValue) : batchProcessor.settings.pendingLimit });
         }
     });
+
+    // Expose test function for console use
+    window.ebirrTestPendingAlert = () => {
+        chrome.runtime.sendMessage({ action: "testPendingAlert", count: 8 });
+    };
 }
 
 function handleBackgroundMessage(request) {
