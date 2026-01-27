@@ -7,13 +7,11 @@ import { verifyTransactionData } from '../../services/verification.js';
 import { setupOffscreenDocument } from '../../services/offscreen_service.js';
 import { getMimeTypeFromDataUrl, getTimeAgo } from '../../utils/helpers.js';
 import { auth } from '../../services/firebase_config.js';
-import { reportActivity, reportOutcome } from '../../services/watchdog_service.js';
+import { sendTelegramNotification } from '../../services/notification_service.js';
 
 export async function handleIntegrationVerify(request, tabId) {
   const { src, amount, rowId, dataUrl } = request;
   const updateStatus = (msg) => chrome.tabs.sendMessage(tabId, { action: "updateStatus", message: msg, rowId }).catch(() => {});
-  
-  reportActivity(); // Notify watchdog we are alive
   
   let extractedId = null;
 
@@ -50,7 +48,6 @@ export async function handleIntegrationVerify(request, tabId) {
                 extractedId: "PDF",
                 imgUrl: src
             }).catch(() => {});
-            reportOutcome(false); // PDF is considered a "failure" for automation flow if manual check needed
             return;
     } else {
         // IMAGE FLOW
@@ -96,7 +93,6 @@ export async function handleIntegrationVerify(request, tabId) {
             extractedId: "RATE_LIMIT",
             imgUrl: src
         }).catch(() => {});
-        reportOutcome(false);
         return;
     }
 
@@ -118,7 +114,6 @@ export async function handleIntegrationVerify(request, tabId) {
             extractedId: "SERVICE_ERROR",
             imgUrl: src
         }).catch(() => {});
-        reportOutcome(false);
         return;
     }
 
@@ -147,7 +142,6 @@ export async function handleIntegrationVerify(request, tabId) {
         extractedId: "ERROR",
         imgUrl: src
       }).catch(() => {});
-      reportOutcome(false);
       return;
     }
 
@@ -183,7 +177,6 @@ export async function handleIntegrationVerify(request, tabId) {
         extractedId,
         imgUrl: src
       }).catch(() => {});
-      reportOutcome(false);
       
       return;
     }
@@ -253,7 +246,6 @@ export async function handleIntegrationVerify(request, tabId) {
                 extractedId,
                 imgUrl: src
             }).catch(() => {});
-            reportOutcome(true); // Repeat is a successful system operation
             return;
         }
         // If incomplete, fall through to re-fetch.
@@ -283,7 +275,6 @@ export async function handleIntegrationVerify(request, tabId) {
           error: err.message,
           imgUrl: src
         }).catch(() => {});
-        reportOutcome(false);
         return;
     }
 
@@ -295,7 +286,6 @@ export async function handleIntegrationVerify(request, tabId) {
           error: data?.error || "Bank Fetch Failed",
           imgUrl: src
         }).catch(() => {});
-        reportOutcome(false);
         return;
     }
 
@@ -324,7 +314,6 @@ export async function handleIntegrationVerify(request, tabId) {
             extractedId: extractedId,
             imgUrl: src
           }).catch(() => {});
-          reportOutcome(false);
           return;
       }
 
@@ -341,6 +330,11 @@ export async function handleIntegrationVerify(request, tabId) {
 
       await logTransactionResult(extractedId, result, old);
 
+      if (result.status === "Verified" || result.status.startsWith("AA")) {
+          const msg = `✅ *Verified Transaction*\n\n*ID:* \`${extractedId}\`\n*Amount:* ${result.foundAmt} ETB\n*Sender:* ${result.senderName}\n*Time:* ${result.timeStr}`;
+          sendTelegramNotification(msg);
+      }
+
       chrome.tabs.sendMessage(tabId, {
         action: "integrationResult",
         rowId: rowId,
@@ -349,7 +343,6 @@ export async function handleIntegrationVerify(request, tabId) {
         extractedId: extractedId,
         imgUrl: src
       }).catch(() => {});
-      reportOutcome(true); // Success
 
   } catch (err) {
     chrome.tabs.sendMessage(tabId, { 
@@ -359,14 +352,11 @@ export async function handleIntegrationVerify(request, tabId) {
       error: err.message,
       imgUrl: src
     }).catch(() => {});
-    reportOutcome(false);
   }
 }
 
 export async function handleMultiIntegrationVerify(request, tabId) {
     const { images, amount, rowId, primaryUrl } = request;
-    reportActivity(); // Notify watchdog
-
     const updateStatus = (msg) => chrome.tabs.sendMessage(tabId, { action: "updateStatus", message: msg, rowId }).catch(() => {});
 
     if (images.length > 1) updateStatus(`Processing ${images.length} Image(s)...`);
@@ -706,7 +696,6 @@ export async function handleMultiIntegrationVerify(request, tabId) {
             extractedId: extractedId,
             imgUrl: primaryUrl
         }).catch(() => {});
-        reportOutcome(false); // No valid transactions found in batch
         return;
     }
 
@@ -714,6 +703,13 @@ export async function handleMultiIntegrationVerify(request, tabId) {
     for (const tx of validTransactions) {
         const verificationResult = { status: "Verified", foundAmt: tx.amount, senderName: tx.data.senderName, senderPhone: tx.data.senderPhone, foundName: tx.data.recipient, timeStr: tx.timeStr, bankDate: tx.data.date };
         await logTransactionResult(tx.id, verificationResult, tx.existingTx);
+    }
+
+    if (validTransactions.length > 0) {
+        const total = validTransactions.reduce((sum, t) => sum + t.amount, 0);
+        const ids = validTransactions.map(t => t.id).join(', ');
+        const msg = `✅ *Verified Batch (Multi)*\n\n*IDs:* \`${ids}\`\n*Total Amount:* ${total} ETB\n*Count:* ${validTransactions.length}`;
+        sendTelegramNotification(msg);
     }
 
     let finalStatus = "Verified";
@@ -746,5 +742,4 @@ export async function handleMultiIntegrationVerify(request, tabId) {
         extractedId: validTransactions.map(t => t.id).join(', '),
         imgUrl: primaryUrl
     }).catch(() => {});
-    reportOutcome(true); // Success
 }

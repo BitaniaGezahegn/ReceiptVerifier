@@ -12,7 +12,6 @@ export class BatchProcessor {
         this.isBatchRunning = false;
         this.activeBatchCount = 0;
         this.lastCleanup = 0;
-        this.lastTelegramAlert = 0;
         
         // Default Settings
         this.settings = {
@@ -26,9 +25,7 @@ export class BatchProcessor {
             retryVerified: false,
             fullAutoMode: false,
             autoRefreshInterval: 30,
-            processingSpeed: 'normal',
-            telegramPendingAlert: false,
-            pendingLimit: 5
+            processingSpeed: 'normal'
         };
 
         this.speedConfig = SPEED_CONFIG.normal;
@@ -66,26 +63,6 @@ export class BatchProcessor {
         if (window.ebirrRefreshTimer) {
             clearInterval(window.ebirrRefreshTimer);
             window.ebirrRefreshTimer = null;
-        }
-    }
-
-    checkPendingAlert() {
-        if (!this.settings.telegramPendingAlert) return;
-
-        const rows = document.querySelectorAll(SELECTORS.row);
-        let pendingCount = 0;
-
-        rows.forEach(row => {
-            if (row.classList.contains('table-head')) return;
-            const isVerified = row.querySelector('.ebirr-summary');
-            const isSkipped = row.dataset.ebirrSkipped === "true";
-            if (!isVerified && !isSkipped) pendingCount++;
-        });
-
-        const now = Date.now();
-        if (pendingCount >= this.settings.pendingLimit && (now - this.lastTelegramAlert > 60000)) { // 1 minute cooldown
-            this.lastTelegramAlert = now;
-            chrome.runtime.sendMessage({ action: "sendPendingAlert", count: pendingCount });
         }
     }
 

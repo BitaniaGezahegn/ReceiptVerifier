@@ -117,15 +117,6 @@ export function routeMessage(request, sender, sendResponse) {
         });
       return true;
 
-    case "sendPendingAlert":
-      sendTelegramNotification(`⚠️ *Pending Request Alert*\n\nThere are *${request.count}* pending requests waiting for verification.`);
-      break;
-
-    case "testPendingAlert":
-      sendTelegramNotification(`⚠️ *Pending Request Alert (TEST)*\n\nThere are *${request.count || 5}* pending requests waiting for verification.`);
-      sendResponse({ success: true });
-      return true;
-
     case "openRandomReview":
       const mgmtTabId = sender.tab.id;
       if (!request.url || !request.url.startsWith('http')) return;

@@ -6,8 +6,6 @@ import { handleStartAI, handleScreenshotFlow } from './controllers/background/co
 import * as UI from './ui/injectors.js';
 import * as TPL from './ui/templates.js';
 import './services/auth_service.js'; // Initialize Auth
-import { sendTelegramNotification } from './services/notification_service.js';
-import { startWatchdog, onWatchdogAlarm, reportActivity } from './services/watchdog_service.js';
 
 // 1. INITIALIZE EXTENSION
 chrome.runtime.onInstalled.addListener(async () => {
@@ -22,20 +20,10 @@ chrome.runtime.onInstalled.addListener(async () => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({ id: "verifyMain", title: "✅ Verify Transaction", contexts: ["image", "link", "frame", "page"] });
   });
-  reportActivity(); // Reset timer on install/update
 });
-
-// 1.5 HANDLE BROWSER STARTUP
-chrome.runtime.onStartup.addListener(() => {
-    reportActivity(); // Reset timer when browser opens
-});
-
-// 7. ALARM LISTENER (For Sleep Mode)
-chrome.alarms.onAlarm.addListener(onWatchdogAlarm);
 
 // Initialize settings immediately for this session
 initSettings();
-startWatchdog(); // Start the sleep mode monitor
 
 let isProcessing = false;
 
@@ -88,19 +76,8 @@ chrome.commands.onCommand.addListener((command) => {
 });
 
 // 5. Clear Cache
-chrome.runtime.onMessage.addListener((request, sender) => {
-    if (request.action === "clearCache" && sender.tab) {
-        chrome.scripting.executeScript({ target: { allFrames: true, tabId: sender.tab.id }, func: () => localStorage.clear() });
-    }
+chrome.runtime.onMessage.addListener((request) => {
+    if (request.action === "clearCache") chrome.scripting.executeScript({ target: { allFrames: true, tabId: sender.tab.id }, func: UI.clearCache });
 });
-
 // 4. MESSAGE LISTENER
 chrome.runtime.onMessage.addListener(routeMessage);
-
-// 6. Expose Testing Helpers for Service Worker Console
-self.ebirrTestPendingAlert = (count = 5) => {
-    console.log(`🔔 Triggering Pending Alert Test (Count: ${count})...`);
-    sendTelegramNotification(`⚠️ *Pending Request Alert (TEST)*\n\nThere are *${count}* pending requests waiting for verification.`);
-};
-
-self.ebirrTestTelegram = () => sendTelegramNotification("🔔 *Test Notification*\n\nSystem is connected successfully!");
