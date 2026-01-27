@@ -22,7 +22,6 @@ export class HistoryUI {
             lastDoc: null
         };
         this.RECENT_TX_CACHE_TTL = 30 * 1000;
-        this.cleanupMigrationUI();
     }
 
     init() {
@@ -49,24 +48,10 @@ export class HistoryUI {
         const importBtn = document.getElementById('import-btn');
         if (importBtn) this.setupImport(importBtn);
 
-        this.cleanupMigrationUI();
-
         document.getElementById('clear-btn').onclick = () => this.clearHistory();
         if (this.clearRecentBtn) this.clearRecentBtn.onclick = () => this.clearHistory();
 
         this.setupEditModal();
-    }
-
-    cleanupMigrationUI() {
-        const migrateBtn = document.getElementById('migrate-btn');
-        if (migrateBtn) {
-            const prev = migrateBtn.previousElementSibling;
-            if (prev && (prev.tagName === 'H3' || prev.tagName === 'H4' || prev.tagName === 'STRONG') && 
-                (prev.innerText.includes('Migration') || prev.innerText.includes('Database'))) {
-                prev.remove();
-            }
-            migrateBtn.remove();
-        }
     }
 
     async loadData() {

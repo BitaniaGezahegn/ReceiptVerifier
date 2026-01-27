@@ -139,23 +139,6 @@ export class SettingsUI {
 
         this.speedSelect.onchange = () => chrome.storage.local.set({ processingSpeed: this.speedSelect.value });
 
-        // Inject Clear Cache button into Data & Keys section if it doesn't exist
-        if (!this.clearCacheBtn && this.keysList && this.keysList.parentNode) {
-            const container = document.createElement('div');
-            container.style.cssText = "margin-top: 15px; padding-top: 15px; border-top: 1px dashed #e2e8f0;";
-            
-            this.clearCacheBtn = document.createElement('button');
-            this.clearCacheBtn.id = 'clear-cache-btn';
-            this.clearCacheBtn.innerText = 'Clear Page Cache';
-            this.clearCacheBtn.style.cssText = "width: 100%; background-color: #ef4444; color: white; padding: 8px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 12px; transition: background-color 0.2s;";
-            
-            this.clearCacheBtn.onmouseover = () => this.clearCacheBtn.style.backgroundColor = "#dc2626";
-            this.clearCacheBtn.onmouseout = () => this.clearCacheBtn.style.backgroundColor = "#ef4444";
-
-            container.appendChild(this.clearCacheBtn);
-            this.keysList.parentNode.appendChild(container);
-        }
-
         if (this.clearCacheBtn) {
             this.clearCacheBtn.onclick = () => this.showClearCacheConfirmation();
         }
