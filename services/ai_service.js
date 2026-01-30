@@ -5,7 +5,7 @@ import { settingsCache } from './settings_service.js';
 // RATE LIMITING QUEUE
 let aiQueue = Promise.resolve();
 let lastAiRequestTime = 0;
-const MIN_AI_INTERVAL = 6000; // 6 seconds = 10 requests per minute (Safe for Gemini 2.0 Flash / 1.5 Flash)
+const MIN_AI_INTERVAL = 6000; // 6 seconds = 10 requests per minute
 
 // Model Fallback List (Priority Order)
 const AI_MODELS = [
@@ -29,7 +29,7 @@ export async function callAIVisionWithRetry(base64, mimeType = 'image/jpeg') {
             }
             
             lastAiRequestTime = Date.now();
-
+            
             try {
                 const result = await callAIVision(base64, keys, settingsCache.activeKeyIndex, banks, mimeType);
                 console.log("AI Result:", result);
@@ -73,7 +73,7 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
     const dynamicPrompt = `
     You are a specialized Vision OCR system for Ethiopian financial transaction verification.
     Your ONLY goal is to extract the **Transaction ID** (also called Reference Number or Receipt Number).
-    
+
     <|id_specs|>
     The valid Transaction ID MUST match one of these exact formats:
     ${specs}
@@ -82,7 +82,7 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
     <|extraction_rules|>
     1. **Locate the Label:** Look for these specific keywords (case-insensitive):
     - English: "Transfer ID", "Trans ID", "Txn ID", "Receipt No", "Ref No", "Reference", "TID"
-    - Afaan Oromoo: "LakkAddaa", "Mogg", "Haftee"
+    - Afaan Oromoo: "LakkAddaa", "Lakk", "Mogg", "Haftee"
     - Somali: "Tix", "Tixda"
     - Amharic: "የክፍያ ቁጥር", "መለያ ቁጥር"
     - Short/SMS: "Transfer-Id:", "Ref:"
