@@ -466,24 +466,11 @@
 
       <h4 style="font-size: 13px; color: #475569; margin: 20px 0 10px 0; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px;">Manage API Keys</h4>
       <div style="display: flex; gap: 8px; margin-bottom: 10px;"><input type="text" id="new-key-input" placeholder="Paste gsk_... key here" class="input-styled" style="flex: 1;"><button id="add-key-btn" class="input-styled" style="background: #3b82f6; color: white; font-weight: bold; cursor: pointer;">+</button></div>
-      <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-        <button id="import-keys-btn" class="input-styled" style="flex: 1; cursor: pointer; font-size: 11px; background: white; color: #64748b; display: flex; align-items: center; justify-content: center; gap: 4px;">
-           <span>📤</span> Import JSON
-        </button>
-        <button id="export-keys-btn" class="input-styled" style="flex: 1; cursor: pointer; font-size: 11px; background: white; color: #64748b; display: flex; align-items: center; justify-content: center; gap: 4px;">
-           <span>📥</span> Export JSON
-        </button>
-      </div>
+      <div style="display: flex; gap: 10px; margin-bottom: 10px;"><button id="import-keys-btn" class="action-btn" style="background: #64748b; color: white; font-size: 12px; padding: 8px;">📤 Import from JSON</button><button id="export-keys-btn" class="action-btn" style="background: #10b981; color: white; font-size: 12px; padding: 8px;">📥 Export to JSON</button></div>
       <div id="keys-list"></div>
 
-      <div class="setting-row" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #f1f5f9;">
-        <div class="setting-row-label">
-          <span class="setting-name" style="color: #ef4444;">Clear Page Cache</span>
-          <span class="setting-description">Reset temporary status flags.</span>
-        </div>
-        <button id="clear-cache-btn" class="input-styled" style="background: #fff; border: 1px solid #ef4444; color: #ef4444; cursor: pointer; font-weight: 600; padding: 6px 12px; font-size: 11px; transition: all 0.2s;">
-          Clear
-        </button>
+      <div style="margin-top: 15px; padding-top: 10px; border-top: 1px dashed #e2e8f0;">
+        <button id="clear-cache-btn" class="action-btn" style="width:100%; background:#ef4444; color:white;">🧹 Clear Page Cache</button>
       </div>
     </div>
   </details>
