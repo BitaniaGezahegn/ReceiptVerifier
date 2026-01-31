@@ -412,13 +412,9 @@ export class SettingsUI {
                             const originalText = this.clearCacheBtn.innerText;
                             this.clearCacheBtn.innerText = "Refresh Page!";
                             this.clearCacheBtn.style.backgroundColor = "#f59e0b";
-                            this.clearCacheBtn.style.color = "white";
-                            this.clearCacheBtn.style.borderColor = "#f59e0b";
                             setTimeout(() => {
                                 this.clearCacheBtn.innerText = originalText;
-                                this.clearCacheBtn.style.backgroundColor = "#fff";
-                                this.clearCacheBtn.style.color = "#ef4444";
-                                this.clearCacheBtn.style.borderColor = "#ef4444";
+                                this.clearCacheBtn.style.backgroundColor = "#ef4444";
                             }, 2000);
                         }
                         return;
@@ -428,13 +424,9 @@ export class SettingsUI {
                         const originalText = this.clearCacheBtn.innerText;
                         this.clearCacheBtn.innerText = "Cache Cleared!";
                         this.clearCacheBtn.style.backgroundColor = "#10b981";
-                        this.clearCacheBtn.style.color = "white";
-                        this.clearCacheBtn.style.borderColor = "#10b981";
                         setTimeout(() => {
                             this.clearCacheBtn.innerText = originalText;
-                            this.clearCacheBtn.style.backgroundColor = "#fff";
-                            this.clearCacheBtn.style.color = "#ef4444";
-                            this.clearCacheBtn.style.borderColor = "#ef4444";
+                            this.clearCacheBtn.style.backgroundColor = "#ef4444";
                         }, 1500);
                     }
                 });
