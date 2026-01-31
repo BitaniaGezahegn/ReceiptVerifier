@@ -328,6 +328,37 @@ export async function handleIntegrationVerify(request, tabId) {
           return;
       }
 
+      // CHECK FOR SKIPPED NAMES (Recipient)
+      const skippedNames = settingsCache.skippedNames || [];
+      const recipientLower = data.recipient.toLowerCase();
+      if (skippedNames.some(name => recipientLower.includes(name.toLowerCase()))) {
+          const result = {
+              status: "Skipped Name",
+              color: "#9ca3af", // Grey
+              statusText: "🚫 SKIPPED (NAME)",
+              foundAmt: amount,
+              timeStr: "N/A",
+              foundName: data.recipient,
+              senderName: data.senderName,
+              senderPhone: data.senderPhone,
+              repeatCount: 0,
+              id: extractedId,
+              processedBy: auth.currentUser ? auth.currentUser.email : "System"
+          };
+          await logTransactionResult(extractedId, result, old);
+
+          chrome.tabs.sendMessage(tabId, {
+            action: "integrationResult",
+            rowId: rowId,
+            success: true,
+            data: result,
+            extractedId: extractedId,
+            imgUrl: src
+          }).catch(() => {});
+          reportOutcome(true); // Treated as a handled outcome (not a system error)
+          return;
+      }
+
       const maxHours = settingsCache.maxReceiptAge || 0.5;
       const result = verifyTransactionData(data, amount, settingsCache.targetName, maxHours);
       
@@ -517,6 +548,28 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                     continue;
                 }
 
+                // Check Skipped Names (Recipient)
+                const skippedNames = settingsCache.skippedNames || [];
+                const recipientLower = data.recipient.toLowerCase();
+                if (skippedNames.some(name => recipientLower.includes(name.toLowerCase()))) {
+                     errors.push(`ID ${finalId}: Skipped (Name)`);
+                     if (!failedTransaction) {
+                         failedTransaction = {
+                             amount: 0,
+                             timeStr: "N/A",
+                             recipientName: data.recipient,
+                             senderName: data.senderName,
+                             senderPhone: data.senderPhone,
+                             status: "Skipped Name",
+                             statusText: "🚫 SKIPPED (NAME)",
+                             id: finalId,
+                             existingTx: old,
+                             bankDate: data.date
+                         };
+                     }
+                     continue;
+                }
+
                 // Verify Data (Pass 0 as amount to just check validity of Name/Date)
                 const check = verifyTransactionData(data, 0, settingsCache.targetName, settingsCache.maxReceiptAge);
                 
@@ -671,6 +724,10 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                     finalStatus = "Bank 404";
                     finalColor = "#f59e0b";
                     statusText = "⚠️ BANK 404 (NOT FOUND)";
+                } else if (errType.includes("Skipped (Name)")) {
+                    finalStatus = "Skipped Name";
+                    finalColor = "#9ca3af";
+                    statusText = "🚫 SKIPPED (NAME)";
                 }
             }
         } else {

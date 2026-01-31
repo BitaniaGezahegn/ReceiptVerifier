@@ -6,6 +6,7 @@ export class SettingsUI {
         this.agePlus = document.getElementById('age-plus');
         this.aiBehaviorSelect = document.getElementById('ai-behavior-select');
         this.targetNameInput = document.getElementById('target-name-input');
+        this.skippedNamesInput = document.getElementById('skipped-names-input');
         this.headlessCheckbox = document.getElementById('headless-checkbox');
         this.pendingAlertCheckbox = document.getElementById('pending-alert-checkbox');
         this.pendingLimitInput = document.getElementById('pending-limit-input');
@@ -57,6 +58,7 @@ export class SettingsUI {
         if (data.maxReceiptAge) this.ageInput.value = data.maxReceiptAge;
         if (data.aiScanBehavior) this.aiBehaviorSelect.value = data.aiScanBehavior;
         if (data.targetName) this.targetNameInput.value = data.targetName;
+        if (data.skippedNames) this.skippedNamesInput.value = data.skippedNames.join(', ');
         
         this.headlessCheckbox.checked = data.headlessMode !== false;
         this.pendingAlertCheckbox.checked = data.pendingAlertEnabled || false;
@@ -98,6 +100,11 @@ export class SettingsUI {
 
         this.aiBehaviorSelect.onchange = () => chrome.storage.local.set({ aiScanBehavior: this.aiBehaviorSelect.value });
         this.targetNameInput.onchange = () => chrome.storage.local.set({ targetName: this.targetNameInput.value.trim() });
+        this.skippedNamesInput.onchange = () => {
+            const val = this.skippedNamesInput.value;
+            const names = val.split(',').map(n => n.trim()).filter(n => n);
+            chrome.storage.local.set({ skippedNames: names });
+        };
         this.headlessCheckbox.onchange = () => chrome.storage.local.set({ headlessMode: this.headlessCheckbox.checked });
         this.pendingAlertCheckbox.onchange = () => chrome.storage.local.set({ pendingAlertEnabled: this.pendingAlertCheckbox.checked });
         this.pendingLimitInput.onchange = () => chrome.storage.local.set({ pendingLimit: parseInt(this.pendingLimitInput.value) || 5 });
