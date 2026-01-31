@@ -496,42 +496,6 @@ export class BatchProcessor {
             return;
         }
 
-        // SKIPPED NAME - Skip without opening modal
-        if (result.status === "Skipped Name") {
-            showNotification("Skipping (Name Match)...", "error");
-            if (this.settings.transactionSoundEnabled) playTransactionSound('random');
-
-            if (row) {
-                 row.dataset.ebirrSkipped = "true";
-                 const container = row.querySelector('.ebirr-controller');
-                 if (container) {
-                    container.innerHTML = '';
-                    const btn = document.createElement('button');
-                    btn.className = 'btn btn-danger btn-xs';
-                    btn.style.cssText = `padding: 2px 8px; font-size: 11px; background-color: ${result.color || '#9ca3af'}; border: none; color: white; border-radius: 3px; cursor: pointer;`;
-                    btn.innerText = "Reject Skipped";
-                    btn.onclick = (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const rejectLink = this.domManager.columnIndexes.reject ? row.querySelector(`td:nth-child(${this.domManager.columnIndexes.reject}) a`) : null;
-                        if (rejectLink) {
-                            safeClick(rejectLink);
-                            this.domManager.waitForModalAndFill(result, 'reject', request.imgUrl, request.extractedId, true);
-                        }
-                    };
-                    this.attachTooltip(btn, result);
-                    container.appendChild(btn);
-                 }
-            }
-            
-            this.saveRowState(row, result, "Reject Skipped");
-
-            if (this.isBatchRunning) {
-                setTimeout(() => this.processBatchQueue(), 500);
-            }
-            return;
-        }
-
         const isVerified = result.status === "Verified";
         const isAA = result.status.startsWith("AA");
         const isPdfSkip = result.status === "PDF" && this.isBatchRunning && this.settings.skipPdfEnabled;
@@ -858,11 +822,6 @@ export class BatchProcessor {
                     else if (data.status === "Random") data.buttonLabel = "Reject Random";
                     else if (data.status === "Repeat") data.buttonLabel = `Reject Repeat (${data.repeatCount || 0})`;
                     else if (data.status === "Under 50") data.buttonLabel = "Reject Under 50";
-                    else if (data.status === "Skipped Name") data.buttonLabel = "Reject Skipped";
-                }
-
-                if (data.status === "Skipped Name") {
-                    row.dataset.ebirrSkipped = "true";
                 }
 
                 const container = row.querySelector('.ebirr-controller');
@@ -877,14 +836,8 @@ export class BatchProcessor {
                          container.innerHTML = '';
                          const btn = document.createElement('button');
                          const isWarning = data.status === "Bank 404" || data.status === "Repeat";
-                         const isSkipped = data.status === "Skipped Name";
-                         
-                         btn.className = isWarning ? 'btn btn-warning btn-xs' : (isSkipped ? 'btn btn-secondary btn-xs' : 'btn btn-danger btn-xs');
-                         
-                         let bgColor = '#ef4444';
-                         if (isWarning) bgColor = '#f59e0b';
-                         else if (isSkipped) bgColor = '#9ca3af';
-
+                         btn.className = isWarning ? 'btn btn-warning btn-xs' : 'btn btn-danger btn-xs';
+                         const bgColor = isWarning ? '#f59e0b' : '#ef4444';
                          btn.style.cssText = `padding: 2px 8px; font-size: 11px; background-color: ${bgColor}; border: none; color: white; border-radius: 3px; cursor: pointer;`;
                          btn.innerText = data.buttonLabel;
 

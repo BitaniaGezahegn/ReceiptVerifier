@@ -1,7 +1,5 @@
-// c:\Users\BT\Desktop\Venv\zOther\Ebirr_Chrome_Verifier\config.js
 export const DEFAULT_API_KEY = "";
 export const TARGET_NAME = "Tolashii Surrum Chonnaloo";
-export const DEFAULT_SKIPPED_NAMES = [];
 
 // Default banks configuration
 export const DEFAULT_BANKS = [
