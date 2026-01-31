@@ -9,6 +9,18 @@ import { getMimeTypeFromDataUrl, getTimeAgo } from '../../utils/helpers.js';
 import { auth } from '../../services/firebase_config.js';
 import { reportActivity, reportOutcome } from '../../services/watchdog_service.js';
 
+function parseBankDateStr(dateStr) {
+    if (!dateStr) return null;
+    try {
+        const p = dateStr.match(/(\d{4})-(\d{2})-(\d{2})\s(\d{2}):(\d{2}):(\d{2})\s(\+\d{4})/);
+        if (p) {
+            return new Date(`${p[1]}-${p[2]}-${p[3]}T${p[4]}:${p[5]}:${p[6]}${p[7].slice(0,3)}:${p[7].slice(3)}`).getTime();
+        }
+        const ts = new Date(dateStr).getTime();
+        return isNaN(ts) ? null : ts;
+    } catch (e) { return null; }
+}
+
 export async function handleIntegrationVerify(request, tabId) {
   const { src, amount, rowId, dataUrl } = request;
   const updateStatus = (msg) => chrome.tabs.sendMessage(tabId, { action: "updateStatus", message: msg, rowId }).catch(() => {});
@@ -225,6 +237,16 @@ export async function handleIntegrationVerify(request, tabId) {
             
             let effectiveStatus = "Repeat";
             let statusText = "🔁 DUPLICATE / REPEAT";
+            let color = "#f59e0b";
+
+            // Check for Skipped Name override on Repeat (Wrong Recipient + < 24h + In Skip List)
+            const skippedNames = settingsCache.skippedNames || [];
+            const recipientLower = (old.recipientName || "").toLowerCase();
+            if ((old.status === "Wrong Recipient" || old.status === "Skipped Name") && skippedNames.some(name => recipientLower.includes(name.toLowerCase()))) {
+                 effectiveStatus = "Skipped Name";
+                 statusText = "🚫 SKIPPED (NAME)";
+                 color = "#9ca3af";
+            }
 
             const repeatResult = {
                 status: effectiveStatus,
@@ -239,7 +261,7 @@ export async function handleIntegrationVerify(request, tabId) {
                 data: {
                     status: effectiveStatus,
                     originalStatus: old.status,
-                    color: "#f59e0b",
+                    color: color,
                     statusText: statusText,
                     foundAmt: old.amount || "0",
                     timeStr: getTimeAgo(old.timestamp, old.dateVerified) || "N/A",
@@ -525,6 +547,29 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                         // It's a complete repeat. Log and continue.
                         old.repeatCount = (old.repeatCount || 0) + 1;
                         old.lastRepeat = Date.now();
+
+                        // Check for Skipped Name override on Repeat
+                        const skippedNames = settingsCache.skippedNames || [];
+                        const recipientLower = (old.recipientName || "").toLowerCase();
+                        if ((old.status === "Wrong Recipient" || old.status === "Skipped Name") && skippedNames.some(name => recipientLower.includes(name.toLowerCase()))) {
+                             errors.push(`ID ${finalId}: Skipped (Name)`);
+                             if (!failedTransaction) {
+                                 failedTransaction = {
+                                     amount: old.amount,
+                                     timeStr: "N/A",
+                                     recipientName: old.recipientName,
+                                     senderName: old.senderName,
+                                     senderPhone: old.senderPhone,
+                                     status: "Skipped Name",
+                                     statusText: "🚫 SKIPPED (NAME)",
+                                     id: finalId,
+                                     existingTx: old,
+                                     bankDate: old.bankDate
+                                 };
+                             }
+                             continue;
+                        }
+
                         await logTransactionResult(finalId, { status: "Repeat", foundAmt: old.amount }, old);
                         errors.push(`ID : Duplicate / Repeat`);
                         maxRepeatCount = Math.max(maxRepeatCount, old.repeatCount);
@@ -687,6 +732,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
             finalStatus = failedTransaction.status;
             statusText = failedTransaction.statusText;
             if (finalStatus === "Old Receipt") finalColor = "#ff9800";
+            else if (finalStatus === "Skipped Name") finalColor = "#9ca3af";
             else finalColor = "#f44336";
             
             foundAmt = failedTransaction.amount;
