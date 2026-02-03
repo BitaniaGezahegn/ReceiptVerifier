@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bank Receipt History</title>
+  <style>
+    body { 
+      width: 450px; 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+      padding: 0;
+      background: #f8fafc; 
+      margin: 0; 
+      color: #1e293b;
+    }
+
+    /* Tab Navigation */
+    .tab-nav {
+      display: flex;
+      background: #f1f5f9;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .tab-link {
+      padding: 14px 18px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      color: #64748b;
+      transition: all 0.2s;
+      border-bottom: 2px solid transparent;
+    }
+    .tab-link.active {
+      color: #3b82f6;
+      border-bottom-color: #3b82f6;
+    }
+    .tab-link:hover {
+      background: #e2e8f0;
+    }
+
+    .tab-content {
+      display: none;
+      padding: 15px;
+    }
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Dashboard Enhancements */
+    .dash-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 15px;
+    }
+    .dash-card {
+      background: white;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      padding: 15px;
+      margin-bottom: 15px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    }
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat-card {
+      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-width: 0; /* Prevent overflow */
+    }
+    .stat-value { font-size: 15px; font-weight: 700; color: #334155; }
+    .stat-label { font-size: 10px; font-weight: 600; color: #94a3b8; text-transform: uppercase; margin-top: 2px; }
+    
+    .recent-item {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 8px 0; border-bottom: 1px solid #f1f5f9;
+    }
+    .recent-item:last-child { border-bottom: none; }
+    .recent-id { font-family: 'Consolas', monospace; font-weight: 600; font-size: 12px; color: #334155; }
+    .recent-meta { font-size: 10px; color: #94a3b8; }
+
+    /* Search Input */
+    .search-container { margin-bottom: 12px; }
+    #search-input { 
+      width: 100%; padding: 12px; border: 1px solid #e2e8f0; 
+      border-radius: 8px; box-sizing: border-box; outline: none;
+      font-size: 14px; transition: border-color 0.2s;
+    }
+    #search-input:focus { border-color: #3b82f6; border-width: 1.5px; }
+
+    /* Table Styling */
+    .table-container { 
+      max-height: 290px; overflow-y: auto; background: white; 
+      border-radius: 10px; border: 1px solid #e2e8f0; 
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th { 
+      position: sticky; top: 0; background: #f1f5f9; color: #64748b; 
+      font-size: 11px; text-transform: uppercase; text-align: left; 
+      padding: 12px 10px; z-index: 10;
+    }
+    td { padding: 12px 10px; font-size: 13px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+    
+    .id-cell b { color: #334155; font-size: 13.5px; }
+    .time-sub { font-size: 10px; color: #94a3b8; margin-top: 2px; display: block; }
+    .status-ok { color: #059669; font-weight: 700; }
+    .status-err { color: #dc2626; font-weight: 600; font-size: 11.5px; }
+    
+    /* History Table Enhancements */
+    .date-header {
+      background: #f1f5f9;
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 8px 12px;
+      letter-spacing: 0.5px;
+    }
+    .copy-btn {
+      background: none; border: none; cursor: pointer; padding: 2px;
+      font-size: 12px; opacity: 0.5; transition: all 0.2s;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .copy-btn:hover { opacity: 1; transform: scale(1.1); }
+    .id-text { font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; color: #334155; font-weight: 600; }
+    tbody tr:hover td { background-color: #f8fafc; }
+
+    /* Footer Buttons */
+    .footer { margin-top: 15px; display: flex; gap: 10px; }
+    button.action-btn { 
+      flex: 1; padding: 12px; border: none; border-radius: 8px; 
+      cursor: pointer; font-weight: 600; font-size: 13px;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      transition: opacity 0.2s;
+    }
+    button.action-btn:active { transform: translateY(1px); }
+    #export-btn { background: #3b82f6; color: white; }
+    #clear-btn { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+
+    /* Empty State */
+    .empty-msg { text-align: center; padding: 40px 20px; color: #94a3b8; font-style: italic; font-size: 14px; }
+
+    /* About Section */
+    .about-section h2 { font-size: 18px; color: #1e293b; margin-bottom: 10px; }
+    .about-section p { font-size: 14px; color: #475569; line-height: 1.6; }
+
+    /* Custom Scrollbar */
+    .table-container::-webkit-scrollbar { width: 6px; }
+    .table-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+
+    /* Settings & Toggles */
+    .settings-box {
+      background: white;
+      padding: 16px;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      margin-top: 15px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    }
+    .settings-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #94a3b8;
+      display: block;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      text-align: center;
+    }
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .setting-row:last-child {
+      margin-bottom: 0;
+    }
+    .setting-name {
+      font-size: 13px;
+      color: #334155;
+      font-weight: 500;
+    }
+    
+    /* Toggle Switch */
+    .toggle-switch { position: relative; display: inline-block; width: 36px; height: 20px; flex-shrink: 0; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .3s; border-radius: 34px; }
+    .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .3s; border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+    input:checked + .slider { background-color: #3b82f6; }
+    input:checked + .slider:before { transform: translateX(16px); }
+    input:disabled + .slider { background-color: #e2e8f0; cursor: not-allowed; opacity: 0.6; }
+    
+    /* Styled Inputs */
+    .input-styled {
+        padding: 6px 8px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        font-size: 13px;
+        color: #334155;
+        outline: none;
+        transition: border-color 0.2s;
+    }
+    .input-styled:focus {
+        border-color: #3b82f6;
+    }
+
+    /* Account Dropdown */
+    .account-container { margin-left: auto; position: relative; display: flex; align-items: center; padding-right: 10px; }
+    .account-btn { background: none; border: none; cursor: pointer; padding: 4px; border-radius: 50%; transition: background 0.2s; display: flex; align-items: center; justify-content: center; color: #64748b; }
+    .account-btn:hover { background: #e2e8f0; color: #334155; }
+    .avatar {
+        font-size: 16px;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+    }
+    .account-dropdown { display: none; position: absolute; top: 100%; right: 5px; background: white; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); z-index: 100; min-width: 200px; overflow: hidden; margin-top: 5px; }
+    .account-dropdown.show { display: block; }
+    .dropdown-item { padding: 10px 15px; font-size: 13px; color: #334155; text-align: left; width: 100%; box-sizing: border-box; background: none; border: none; display: block; }
+    .email-item { font-weight: 600; color: #64748b; background: #f8fafc; border-bottom: 1px solid #f1f5f9; font-size: 11px; word-break: break-all; padding: 12px 15px; }
+    .logout-item { cursor: pointer; color: #ef4444; font-weight: 600; transition: background 0.2s; }
+    .logout-item:hover { background: #fef2f2; }
+  </style>
+  <!-- New Settings Styles -->
+  <style>
+    .settings-section {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+      transition: all 0.2s ease-in-out;
+    }
+    .settings-section[open] {
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
+    }
+    .settings-section summary {
+      padding: 14px 16px;
+      font-weight: 600;
+      font-size: 14px;
+      color: #334155;
+      cursor: pointer;
+      outline: none;
+      list-style: none; /* Remove default arrow */
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .settings-section summary::-webkit-details-marker { display: none; }
+    .settings-section summary .summary-icon {
+      font-size: 20px; color: #94a3b8; transform: rotate(0deg); transition: transform 0.2s;
+    }
+    .settings-section[open] summary .summary-icon { transform: rotate(90deg); }
+    .settings-content { padding: 0 16px 16px 16px; border-top: 1px solid #f1f5f9; }
+    .setting-row .setting-row-label { display: flex; flex-direction: column; }
+    .setting-description { font-size: 11px; color: #64748b; margin-top: 2px; }
+    .setting-control { display: flex; align-items: center; gap: 8px; }
+    #keys-list, #banks-list { display: flex; flex-direction: column; gap: 8px; max-height: 150px; overflow-y: auto; padding-right: 5px; }
+    #keys-list::-webkit-scrollbar, #banks-list::-webkit-scrollbar { width: 4px; }
+    #keys-list::-webkit-scrollbar-thumb, #banks-list::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+    .key-item { background:#f8fafc; padding:8px 12px; border-radius:6px; border:1px solid #e2e8f0; font-size:11px; }
+    .bank-item { background:#f8fafc; padding:8px; border-radius:6px; border:1px solid #e2e8f0; font-size:11px; margin-bottom:5px; }
+  </style>
+</head>
+<body>
+  <div class="tab-nav">
+    <button class="tab-link" data-tab="dashboard">Dashboard</button>
+    <button class="tab-link" data-tab="history">History</button>
+    <button class="tab-link active" data-tab="settings">Settings</button>
+    <button class="tab-link" data-tab="about">About</button>
+    
+    <div class="account-container">
+        <button id="account-btn" class="account-btn" title="Account">
+            <div class="avatar">👤</div>
+        </button>
+        <div id="account-dropdown" class="account-dropdown">
+            <div id="user-email-display" class="email-item"></div>
+            <button id="logout-btn" class="dropdown-item logout-item">Logout</button>
+        </div>
+    </div>
+  </div>
+
+  <div id="dashboard" class="tab-content">
+    <div class="dash-header">
+        <div id="stats-scope-toggle" class="scope-toggle">
+            <button class="scope-btn" data-scope="team">Team</button>
+            <button class="scope-btn active" data-scope="my">My Stats</button>
+        </div>
+        <input type="date" id="date-picker" class="input-styled" style="font-family: inherit; color: #475569;">
+    </div>
+
+    <div class="dash-card" style="padding: 15px;">
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <div style="flex: 0 0 100px; display: flex; justify-content: center;">
+                 <canvas id="verification-chart" width="100" height="100" style="width: 100px; height: 100px;"></canvas>
+            </div>
+            <div class="stat-grid" style="flex: 1;">
+                <div class="stat-card">
+                    <span id="ok-sum" class="stat-value" style="color: #059669;">0.00</span>
+                    <span class="stat-label">Verified (ETB)</span>
+                </div>
+                <div class="stat-card">
+                    <span id="fail-sum" class="stat-value" style="color: #dc2626;">0.00</span>
+                    <span class="stat-label">Failed (ETB)</span>
+                </div>
+                <div class="stat-card">
+                    <span id="success-rate" class="stat-value" style="color: #3b82f6;">0%</span>
+                    <span class="stat-label">Success Rate</span>
+                </div>
+                <div class="stat-card">
+                    <span id="avg-amount" class="stat-value" style="color: #64748b;">0</span>
+                    <span class="stat-label">Avg Amount</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="dash-card" style="padding: 0; overflow: hidden;">
+        <div style="display: flex; border-bottom: 1px solid #e2e8f0;">
+            <div style="flex: 1; padding: 12px; text-align: center; border-right: 1px solid #e2e8f0;">
+                <span class="stat-label" style="display: block; margin-bottom: 5px;">Hourly Volume</span>
+                <canvas id="hourly-chart" height="60" style="width: 100%;"></canvas>
+            </div>
+            <div style="flex: 1; padding: 12px; text-align: center;">
+                <span class="stat-label" style="display: block; margin-bottom: 5px;">Bank Split</span>
+                <canvas id="bank-chart" height="60" style="width: 100%;"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="dash-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <label class="settings-label" style="text-align: left; margin-bottom: 0;">Recent Activity</label>
+            <button id="clear-recent-btn" style="background: none; border: none; color: #94a3b8; font-size: 11px; cursor: pointer; font-weight: 600; padding: 0; transition: color 0.2s;">Clear History</button>
+        </div>
+        <div id="recent-list"></div>
+    </div>
+</div>
+
+<div id="settings" class="tab-content active">
+  <details class="settings-section" open>
+    <summary>Verification <span class="summary-icon">›</span></summary>
+    <div class="settings-content">
+      <div class="setting-row">
+        <div class="setting-row-label">
+          <span class="setting-name">AI Scan Behavior</span>
+          <span class="setting-description">Choose how to handle verification requests.</span>
+        </div>
+        <select id="ai-behavior-select" class="input-styled" style="width: 120px;">
+          <option value="always_ai">Always AI</option><option value="ask">Ask User</option><option value="always_manual">Manual Only</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <div class="setting-row-label">
+          <span class="setting-name">Target Recipient Name</span>
+          <span class="setting-description">The name to verify against on receipts.</span>
+        </div>
+        <input type="text" id="target-name-input" placeholder="Tolashii Surrum Chonnaloo" class="input-styled" style="width: 120px;">
+      </div>
+      <div class="setting-row">
+        <div class="setting-row-label">
+          <span class="setting-name">Skipped Recipients</span>
+          <span class="setting-description">Comma-separated names to skip.</span>
+        </div>
+        <textarea id="skipped-names-input" class="input-styled" style="width: 120px; height: 50px; resize: vertical; font-family: inherit;" placeholder="Name 1, Name 2"></textarea>
+      </div>
+      <div class="setting-row">
+        <div class="setting-row-label">
+          <span class="setting-name">Headless Mode</span>
+          <span class="setting-description">Verify without opening a new tab (faster).</span>
+        </div>
+        <label class="toggle-switch"><input type="checkbox" id="headless-checkbox"><span class="slider"></span></label>
+      </div>
+      <div class="setting-row">
+        <div class="setting-row-label">
+          <span class="setting-name">Max Receipt Age (Hours)</span>
+          <span class="setting-description">Reject receipts older than this limit.</span>
+        </div>
+        <div class="setting-control">
+          <button id="age-minus" class="input-styled" style="width: 28px; font-weight: bold;">-</button>
+          <input type="number" id="age-input" value="0.5" step="0.5" min="0.5" class="input-styled" style="width: 45px; text-align: center; font-weight: 600;">
+          <button id="age-plus" class="input-styled" style="width: 28px; font-weight: bold;">+</button>
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <details class="settings-section">
+    <summary>Automation & Batch <span class="summary-icon">›</span></summary>
+    <div class="settings-content">
+      <div class="setting-row">
+        <div class="setting-row-label"><span class="setting-name" style="font-weight: 700; color: #3b82f6;">Full Auto Mode</span><span class="setting-description">Continuously process the queue.</span></div>
+        <label class="toggle-switch"><input type="checkbox" id="full-auto-checkbox"><span class="slider"></span></label>
+      </div>
+      <div class="setting-row">
+        <div class="setting-row-label"><span class="setting-name">↳ Refresh Interval (sec)</span><span class="setting-description">Wait time before auto-refreshing.</span></div>
+        <input type="number" id="auto-refresh-interval" value="30" min="5" class="input-styled" style="width: 60px; text-align: center;">
+      </div>
+      <div class="setting-row">
+        <div class="setting-row-label"><span class="setting-name">Processing Speed</span><span class="setting-description">Control automation delays.</span></div>
+        <select id="speed-select" class="input-styled" style="width: 100px;"><option value="very_slow">Very Slow</option><option value="slow">Slow</option><option value="normal" selected>Normal</option><option value="fast">Fast</option><option value="very_fast">Very Fast</option></select>
+      </div>
+      <div class="setting-row">
+        <div class="setting-row-label"><span class="setting-name">Skip PDFs</span><span class="setting-description">Auto-skip PDF receipts in batch mode.</span></div>
+        <label class="toggle-switch"><input type="checkbox" id="skip-pdf-checkbox"><span class="slider"></span></label>
+      </div>
+      <div class="setting-row">
+        <div class="setting-row-label"><span class="setting-name">Skip High Repeats</span><span class="setting-description">Skip after N repeated attempts.</span></div>
+        <div class="setting-control"><input type="number" id="repeat-limit-input" value="3" min="1" class="input-styled" style="width: 45px; text-align: center;" title="Repeat Limit"><label class="toggle-switch"><input type="checkbox" id="skip-repeat-checkbox"><span class="slider"></span></label></div>
+      </div>
+      <div id="repeat-options" style="margin-left: 15px; border-left: 2px solid #f1f5f9; padding-left: 15px; display: none;">
+        <div class="setting-row"><div class="setting-row-label"><span class="setting-name">↳ Retry 'Wrong Recipient'</span><span class="setting-description">Override skip for this error.</span></div><label class="toggle-switch"><input type="checkbox" id="retry-wrong-recip-checkbox"><span class="slider"></span></label></div>
+        <div class="setting-row"><div class="setting-row-label"><span class="setting-name">↳ Retry 'Verified'</span><span class="setting-description">Override skip for this status.</span></div><label class="toggle-switch"><input type="checkbox" id="retry-verified-checkbox"><span class="slider"></span></label></div>
+      </div>
+      <div class="setting-row">
+        <div class="setting-row-label"><span class="setting-name">Skip Random/Unknown</span><span class="setting-description">Auto-skip receipts AI cannot read.</span></div>
+        <label class="toggle-switch"><input type="checkbox" id="skip-random-checkbox"><span class="slider"></span></label>
+      </div>
+      <div class="setting-row">
+        <div class="setting-row-label"><span class="setting-name">Start from Bottom</span><span class="setting-description">Process batch queue in reverse.</span></div>
+        <label class="toggle-switch"><input type="checkbox" id="batch-reverse-checkbox"><span class="slider"></span></label>
+      </div>
+    </div>
+  </details>
+
+  <details class="settings-section">
+    <summary>Notifications <span class="summary-icon">›</span></summary>
+    <div class="settings-content">
+      <div class="setting-row">
+        <div class="setting-row-label"><span class="setting-name">Pending Request Alert</span><span class="setting-description">Alert when pending requests exceed limit.</span></div>
+        <div class="setting-control"><input type="number" id="pending-limit-input" value="5" min="1" class="input-styled" style="width: 45px; text-align: center;" title="Alert Threshold"><label class="toggle-switch"><input type="checkbox" id="pending-alert-checkbox"><span class="slider"></span></label></div>
+      </div>
+      <div class="setting-row">
+        <div class="setting-row-label"><span class="setting-name">Telegram Pending Alert</span><span class="setting-description">Send pending alerts to Telegram.</span></div>
+        <div class="setting-control"><button id="test-telegram-alert-btn" class="input-styled" style="padding: 2px 6px; font-size: 10px; margin-right: 8px; cursor: pointer;">Test</button><label class="toggle-switch"><input type="checkbox" id="telegram-pending-alert-checkbox"><span class="slider"></span></label></div>
+      </div>
+      <div class="setting-row">
+        <div class="setting-row-label"><span class="setting-name">Sleep Mode (Safety)</span><span class="setting-description">Alert if inactive or stuck.</span></div>
+        <label class="toggle-switch"><input type="checkbox" id="sleep-mode-checkbox"><span class="slider"></span></label>
+      </div>
+      <div id="sleep-mode-options" style="margin-left: 15px; border-left: 2px solid #f1f5f9; padding-left: 15px; display: none;">
+        <div class="setting-row"><div class="setting-row-label"><span class="setting-name">↳ Inactivity Timeout (min)</span></div><input type="number" id="sleep-timeout-input" value="10" min="1" class="input-styled" style="width: 50px; text-align: center;"></div>
+        <div class="setting-row"><div class="setting-row-label"><span class="setting-name">↳ Repeat Interval (min)</span></div><input type="number" id="sleep-repeat-input" value="2" min="1" class="input-styled" style="width: 50px; text-align: center;"></div>
+        <div class="setting-row"><div class="setting-row-label"><span class="setting-name">↳ Max Alerts</span></div><input type="number" id="sleep-max-retries-input" value="10" min="1" class="input-styled" style="width: 50px; text-align: center;"></div>
+        <div class="setting-row"><div class="setting-row-label"><span class="setting-name">↳ Max Consecutive Errors</span></div><input type="number" id="sleep-failure-limit-input" value="5" min="1" class="input-styled" style="width: 50px; text-align: center;"></div>
+      </div>
+      <div class="setting-row">
+        <div class="setting-row-label"><span class="setting-name">Sound Effects</span><span class="setting-description">Play sounds for success or failure.</span></div>
+        <label class="toggle-switch"><input type="checkbox" id="transaction-sound-checkbox"><span class="slider"></span></label>
+      </div>
+    </div>
+  </details>
+
+  <details class="settings-section">
+    <summary>Data & Keys <span class="summary-icon">›</span></summary>
+    <div class="settings-content">
+      <h4 style="font-size: 13px; color: #475569; margin: 10px 0 10px 0; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px;">Manage Banks</h4>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;"><input type="text" id="bank-name" placeholder="Bank Name" class="input-styled"><input type="number" id="bank-len" placeholder="ID Length" class="input-styled"></div>
+      <div style="margin-bottom: 8px;"><input type="text" id="bank-prefixes" placeholder="Prefixes (e.g. 801, 802)" class="input-styled" style="width: 100%; box-sizing: border-box;"></div>
+      <div style="display: flex; gap: 8px; margin-bottom: 10px;"><input type="text" id="bank-url" placeholder="Receipt Base URL" class="input-styled" style="flex: 1;"><button id="add-bank-btn" class="input-styled" style="background: #3b82f6; color: white; font-weight: bold; cursor: pointer;">+</button></div>
+      <div id="banks-list"></div>
+
+      <h4 style="font-size: 13px; color: #475569; margin: 20px 0 10px 0; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px;">Manage API Keys</h4>
+      <div style="display: flex; gap: 8px; margin-bottom: 10px;"><input type="text" id="new-key-input" placeholder="Paste gsk_... key here" class="input-styled" style="flex: 1;"><button id="add-key-btn" class="input-styled" style="background: #3b82f6; color: white; font-weight: bold; cursor: pointer;">+</button></div>
+      <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+        <button id="import-keys-btn" class="input-styled" style="flex: 1; cursor: pointer; font-size: 11px; background: white; color: #64748b; display: flex; align-items: center; justify-content: center; gap: 4px;">
+           <span>📤</span> Import JSON
+        </button>
+        <button id="export-keys-btn" class="input-styled" style="flex: 1; cursor: pointer; font-size: 11px; background: white; color: #64748b; display: flex; align-items: center; justify-content: center; gap: 4px;">
+           <span>📥</span> Export JSON
+        </button>
+      </div>
+      <div id="keys-list"></div>
+
+      <div class="setting-row" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #f1f5f9;">
+        <div class="setting-row-label">
+          <span class="setting-name" style="color: #ef4444;">Clear Page Cache</span>
+          <span class="setting-description">Reset temporary status flags.</span>
+        </div>
+        <button id="clear-cache-btn" class="input-styled" style="background: #fff; border: 1px solid #ef4444; color: #ef4444; cursor: pointer; font-weight: 600; padding: 6px 12px; font-size: 11px; transition: all 0.2s;">
+          Clear
+        </button>
+      </div>
+    </div>
+  </details>
+</div>
+
+  <div id="history" class="tab-content">
+    <div class="search-container">
+      <input type="text" id="search-input" placeholder="🔍 Search ID, Amount, or Status...">
+    </div>
+
+    <div class="table-container">
+      <table id="history-table">
+        <thead>
+          <tr>
+            <th style="width: 30%;">ID & Time</th>
+            <th style="width: 25%;">Sender</th>
+            <th style="width: 15%;">Amount</th>
+            <th style="width: 20%;">Status</th>
+            <th style="width: 10%;"></th>
+          </tr>
+        </thead>
+        <tbody id="log-body"></tbody>
+      </table>
+      <div id="empty-state" class="empty-msg" style="display:none;">
+        No matching transactions found.
+      </div>
+    </div>
+    
+    <div class="footer">
+      <button id="import-btn" class="action-btn" style="background: #64748b; color: white;">📤 Import</button>
+      <button id="export-btn" class="action-btn">📥 Export</button>
+      <button id="clear-btn" class="action-btn">🗑️ Clear</button>
+    </div>
+  </div>
+
+  <div id="about" class="tab-content about-section">
+    <h2>E-birr Verifier Pro</h2>
+    <p>Version: 2.5</p>
+    <p>This extension uses AI to help you quickly and accurately verify E-birr transaction screenshots from various sources.</p>
+    <p>Use the right-click menu on an image or the browser action to get started.</p>
+  </div>
+
+  <!-- Edit Modal -->
+  <div id="edit-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:white; padding:20px; border-radius:10px; width:85%; max-width:300px; box-shadow:0 4px 20px rgba(0,0,0,0.2);">
+        <h3 style="margin:0 0 15px 0; color:#334155; font-size:16px;">Edit Transaction</h3>
+        <input type="hidden" id="edit-old-id">
+        
+        <label style="display:block; font-size:11px; font-weight:bold; color:#64748b; margin-bottom:4px;">Transaction ID</label>
+        <input type="text" id="edit-id" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px; margin-bottom:10px; box-sizing:border-box; font-size:13px;">
+        
+        <label style="display:block; font-size:11px; font-weight:bold; color:#64748b; margin-bottom:4px;">Amount</label>
+        <input type="number" id="edit-amount" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px; margin-bottom:10px; box-sizing:border-box; font-size:13px;">
+        
+        <label style="display:block; font-size:11px; font-weight:bold; color:#64748b; margin-bottom:4px;">Status</label>
+        <input type="text" id="edit-status" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px; margin-bottom:15px; box-sizing:border-box; font-size:13px;">
+        
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+            <button id="cancel-edit" style="padding:8px 12px; background:#f1f5f9; color:#475569; border:none; border-radius:6px; cursor:pointer; font-weight:600; font-size:12px;">Cancel</button>
+            <button id="save-edit" style="padding:8px 12px; background:#3b82f6; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600; font-size:12px;">Save Changes</button>
+        </div>
+    </div>
+  </div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

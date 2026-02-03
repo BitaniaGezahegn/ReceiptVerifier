@@ -1,0 +1,82 @@
+{
+  "manifest_version": 3,
+  "name": "Bank Receipt Verifier Pro",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv0mdMP8kZNOu9pU3rKLCaOnbRHAooubd6a5OsK4onnksYTg+p/BOyYndWEKOy6ULJpl3Y6UZtxvaKGrgJ+D6cvCHgWpmh8o4dgzoDjsNyao9puO6P1udnTnSKJe40tJgbtsI/Etl2xpAQTSOOeZ5zcAydP2Y7aoTbGZVdrZoJsDaPgGhHM5bS0hUX6bLxxskkJw1YBcen2+2SPs6JM51ZfXbx0igROlgmVn5ExYZrkWhjaKHtQW94h2w/tO+OYOx0kqg8hYLoabvSzX6lv5pS/WyWBmv+1RIbSsyo72y+E6/iH4+3JO0+G8Dv4lH1j2NEC+0zzBaWMvOQ66O66dutwIDAQAB",
+  "version": "3.0",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "contextMenus",
+    "tabs",
+    "offscreen",
+    "downloads",
+    "identity",
+    "alarms"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "host_permissions": [
+    "https://*.my-managment.com/*",
+    "https://transactioninfo.ebirr.com/*",
+    "https://*.firebaseio.com/*",
+    "https://*.googleapis.com/*",
+    "https://api.groq.com/*",
+    "<all_urls>"
+  ],
+  "oauth2": {
+    "client_id": "416782255208-tect0akvcctccppab02dhv0eh8ftod9e.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/userinfo.profile",
+      "openid"
+    ]
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' file: data: blob: https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://transactioninfo.ebirr.com https://my-managment.com https://*.my-managment.com https://api.groq.com https://api.telegram.org"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["page_checker.js"]
+    },
+    {
+      "matches": ["https://my-managment.com/en/admin/report/pendingrequestrefill"],
+      "js": ["content_loader.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://my-managment.com/en/admin/ticketsystem/ProcessingPaymentReferencesSM"],
+      "js": ["flag_injector.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "integration.js",
+        "cropper.js",
+        "offscreen.html",
+        "page_checker.js",
+        "controllers/*",
+        "ui/*",
+        "utils/*",
+        "services/*"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "commands": {
+    "take_screenshot_verify": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S"
+      },
+      "description": "Capture screen and verify"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  }
+}
