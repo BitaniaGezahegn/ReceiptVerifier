@@ -29,13 +29,17 @@ function parseBankDateStr(dateStr) {
  * 3. EXCEPTION 1: If "Verify if newer than X hours" is set AND tx is younger -> Verify.
  * 4. EXCEPTION 2: If "Verify if older than Date" is set AND tx is older -> Verify.
  */
-function shouldSkipRecipient(recipientName, dateStr, settings) {
+function shouldSkipRecipient(recipientName, reason, dateStr, settings) {
     if (settings.skipByNameEnabled === false) return false;
     const skippedNames = settings.skippedNames || [];
-    if (!recipientName) return false;
     
-    const recipientLower = recipientName.toLowerCase();
-    if (!skippedNames.some(name => recipientLower.includes(name.toLowerCase()))) {
+    const recipientLower = (recipientName || "").toLowerCase();
+    const reasonLower = (reason || "").toLowerCase();
+
+    if (!skippedNames.some(name => {
+        const n = name.toLowerCase();
+        return recipientLower.includes(n) || reasonLower.includes(n);
+    })) {
         return false;
     }
 
@@ -390,7 +394,7 @@ export async function handleIntegrationVerify(request, tabId) {
       }
 
       // CHECK FOR SKIPPED NAMES (Recipient)
-      const shouldSkip = shouldSkipRecipient(data.recipient, data.date, settingsCache);
+      const shouldSkip = shouldSkipRecipient(data.recipient, data.reason, data.date, settingsCache);
 
       if (shouldSkip) {
           const result = {
@@ -633,7 +637,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                 }
 
                 // Check Skipped Names (Recipient)
-                const shouldSkip = shouldSkipRecipient(data.recipient, data.date, settingsCache);
+                const shouldSkip = shouldSkipRecipient(data.recipient, data.reason, data.date, settingsCache);
 
                 if (shouldSkip) {
                      errors.push(`ID ${finalId}: Skipped (Name)`);
