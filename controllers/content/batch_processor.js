@@ -780,6 +780,7 @@ export class BatchProcessor {
     }
 
     cleanupCache() {
+        /* Disabled automatic cleanup
         const now = Date.now();
         const EXPIRATION_MS = 300 * 60 * 1000; // 300 minutes
         const keysToRemove = [];
@@ -802,6 +803,7 @@ export class BatchProcessor {
         }
         
         keysToRemove.forEach(k => localStorage.removeItem(k));
+        */
     }
 
     clearAllCache() {
@@ -847,10 +849,12 @@ export class BatchProcessor {
                 const data = JSON.parse(cached);
 
                 // Check Expiration (Lazy Check)
+                /* Disabled automatic cleanup
                 if (Date.now() - (data.timestamp || 0) > 30 * 60 * 1000) {
                     localStorage.removeItem(`ebirr_cache_${pageTxId}`);
                     return;
                 }
+                */
 
                 // RECONSTRUCT BUTTON LABEL IF MISSING (Fix for text-only issue)
                 if (!data.buttonLabel) {

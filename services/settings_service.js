@@ -9,6 +9,8 @@ export let settingsCache = {
     headlessMode: true,
     aiScanBehavior: 'always_ai',
     skippedNames: DEFAULT_SKIPPED_NAMES,
+    skippedNameAge: 0,
+    skippedNameDate: null,
     targetName: TARGET_NAME,
     telegramBotToken: "8445114042:AAFdEkeL8ccF329qgiY9edAm6bIfseqJzQU",
     telegramChatId: "5282771696", // Add more IDs here separated by commas: "ID1, ID2, ID3"

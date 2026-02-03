@@ -6,7 +6,12 @@ export class SettingsUI {
         this.agePlus = document.getElementById('age-plus');
         this.aiBehaviorSelect = document.getElementById('ai-behavior-select');
         this.targetNameInput = document.getElementById('target-name-input');
-        this.skippedNamesInput = document.getElementById('skipped-names-input');
+        this.newSkippedNameInput = document.getElementById('new-skipped-name-input');
+        this.addSkippedNameBtn = document.getElementById('add-skipped-name-btn');
+        this.skippedNamesList = document.getElementById('skipped-names-list');
+        this.skippedNameAgeInput = document.getElementById('skipped-name-age-input');
+        this.skippedNameDateInput = document.getElementById('skipped-name-date-input');
+        this.clearSkippedNameDateBtn = document.getElementById('clear-skipped-name-date-btn');
         this.headlessCheckbox = document.getElementById('headless-checkbox');
         this.pendingAlertCheckbox = document.getElementById('pending-alert-checkbox');
         this.pendingLimitInput = document.getElementById('pending-limit-input');
@@ -58,7 +63,9 @@ export class SettingsUI {
         if (data.maxReceiptAge) this.ageInput.value = data.maxReceiptAge;
         if (data.aiScanBehavior) this.aiBehaviorSelect.value = data.aiScanBehavior;
         if (data.targetName) this.targetNameInput.value = data.targetName;
-        if (data.skippedNames) this.skippedNamesInput.value = data.skippedNames.join(', ');
+        this.renderSkippedNames(data.skippedNames || []);
+        if (data.skippedNameAge !== undefined) this.skippedNameAgeInput.value = data.skippedNameAge;
+        if (data.skippedNameDate) this.skippedNameDateInput.value = data.skippedNameDate;
         
         this.headlessCheckbox.checked = data.headlessMode !== false;
         this.pendingAlertCheckbox.checked = data.pendingAlertEnabled || false;
@@ -100,11 +107,15 @@ export class SettingsUI {
 
         this.aiBehaviorSelect.onchange = () => chrome.storage.local.set({ aiScanBehavior: this.aiBehaviorSelect.value });
         this.targetNameInput.onchange = () => chrome.storage.local.set({ targetName: this.targetNameInput.value.trim() });
-        this.skippedNamesInput.onchange = () => {
-            const val = this.skippedNamesInput.value;
-            const names = val.split(',').map(n => n.trim()).filter(n => n);
-            chrome.storage.local.set({ skippedNames: names });
+        
+        this.addSkippedNameBtn.onclick = () => this.addSkippedName();
+        this.skippedNameAgeInput.onchange = () => chrome.storage.local.set({ skippedNameAge: parseFloat(this.skippedNameAgeInput.value) || 0 });
+        this.skippedNameDateInput.onchange = () => chrome.storage.local.set({ skippedNameDate: this.skippedNameDateInput.value });
+        this.clearSkippedNameDateBtn.onclick = () => {
+            this.skippedNameDateInput.value = "";
+            chrome.storage.local.set({ skippedNameDate: null });
         };
+
         this.headlessCheckbox.onchange = () => chrome.storage.local.set({ headlessMode: this.headlessCheckbox.checked });
         this.pendingAlertCheckbox.onchange = () => chrome.storage.local.set({ pendingAlertEnabled: this.pendingAlertCheckbox.checked });
         this.pendingLimitInput.onchange = () => chrome.storage.local.set({ pendingLimit: parseInt(this.pendingLimitInput.value) || 5 });
@@ -155,6 +166,50 @@ export class SettingsUI {
         if (this.importKeysBtn) this.setupImportKeys();
 
         this.addBankBtn.onclick = () => this.addBank();
+    }
+
+    renderSkippedNames(names) {
+        this.skippedNamesList.innerHTML = "";
+        if (!names || names.length === 0) {
+            this.skippedNamesList.innerHTML = "<div style='text-align:center; color:#94a3b8; font-size:11px; padding: 5px;'>No names skipped.</div>";
+            return;
+        }
+        names.forEach((name, index) => {
+            const div = document.createElement('div');
+            div.className = 'key-item';
+            div.style.display = 'flex'; div.style.alignItems = 'center'; div.style.justifyContent = 'space-between';
+            div.style.padding = '6px 10px';
+            
+            div.innerHTML = `
+                <span style="color:#334155; font-size:12px;">${name}</span>
+                <button class="del-skipped-name-btn" data-index="${index}" style="background:none; border:none; color:#ef4444; cursor:pointer; font-weight:bold;">×</button>
+            `;
+            this.skippedNamesList.appendChild(div);
+        });
+
+        this.skippedNamesList.querySelectorAll('.del-skipped-name-btn').forEach(btn => {
+            btn.onclick = async (e) => {
+                const idx = parseInt(e.target.dataset.index);
+                const newNames = names.filter((_, i) => i !== idx);
+                await chrome.storage.local.set({ skippedNames: newNames });
+                this.renderSkippedNames(newNames);
+            };
+        });
+    }
+
+    async addSkippedName() {
+        const val = this.newSkippedNameInput.value.trim();
+        if (!val) return;
+        const d = await chrome.storage.local.get(['skippedNames']);
+        const currentNames = d.skippedNames || [];
+        if (!currentNames.some(n => n.toLowerCase() === val.toLowerCase())) {
+            currentNames.push(val);
+            await chrome.storage.local.set({ skippedNames: currentNames });
+            this.newSkippedNameInput.value = "";
+            this.renderSkippedNames(currentNames);
+        } else {
+            alert("Name already exists in skip list.");
+        }
     }
 
     updateFullAutoDependencies() {

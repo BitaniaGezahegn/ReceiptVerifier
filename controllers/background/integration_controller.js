@@ -21,6 +21,44 @@ function parseBankDateStr(dateStr) {
     } catch (e) { return null; }
 }
 
+/**
+ * Determines if a recipient should be skipped based on settings.
+ * Logic:
+ * 1. If name NOT in list -> Don't Skip.
+ * 2. If name IN list -> Default to SKIP.
+ * 3. EXCEPTION 1: If "Verify if newer than X hours" is set AND tx is younger -> Verify.
+ * 4. EXCEPTION 2: If "Verify if older than Date" is set AND tx is older -> Verify.
+ */
+function shouldSkipRecipient(recipientName, dateStr, settings) {
+    const skippedNames = settings.skippedNames || [];
+    if (!recipientName) return false;
+    
+    const recipientLower = recipientName.toLowerCase();
+    if (!skippedNames.some(name => recipientLower.includes(name.toLowerCase()))) {
+        return false;
+    }
+
+    const txTime = parseBankDateStr(dateStr);
+    if (!txTime) return true; // Skip if we can't parse date to be safe
+
+    // 1. Check Age Threshold (Hours) - "Verify if Newer"
+    const skippedNameAge = settings.skippedNameAge || 0;
+    if (skippedNameAge > 0) {
+        const ageHours = (Date.now() - txTime) / (1000 * 60 * 60);
+        if (ageHours < skippedNameAge) return false; // Verify (It's fresh)
+    }
+
+    // 2. Check Date Threshold - "Verify if Older" (User Request)
+    const skippedNameDate = settings.skippedNameDate; // YYYY-MM-DD
+    if (skippedNameDate) {
+        const cutoffTime = new Date(skippedNameDate).getTime();
+        // If txTime is BEFORE cutoff, we Verify (return false for skip)
+        if (txTime < cutoffTime) return false;
+    }
+
+    return true; // Default: Skip
+}
+
 export async function handleIntegrationVerify(request, tabId) {
   const { src, amount, rowId, dataUrl } = request;
   const updateStatus = (msg) => chrome.tabs.sendMessage(tabId, { action: "updateStatus", message: msg, rowId }).catch(() => {});
@@ -351,9 +389,9 @@ export async function handleIntegrationVerify(request, tabId) {
       }
 
       // CHECK FOR SKIPPED NAMES (Recipient)
-      const skippedNames = settingsCache.skippedNames || [];
-      const recipientLower = data.recipient.toLowerCase();
-      if (skippedNames.some(name => recipientLower.includes(name.toLowerCase()))) {
+      const shouldSkip = shouldSkipRecipient(data.recipient, data.date, settingsCache);
+
+      if (shouldSkip) {
           const result = {
               status: "Skipped Name",
               color: "#9ca3af", // Grey
@@ -594,9 +632,9 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                 }
 
                 // Check Skipped Names (Recipient)
-                const skippedNames = settingsCache.skippedNames || [];
-                const recipientLower = data.recipient.toLowerCase();
-                if (skippedNames.some(name => recipientLower.includes(name.toLowerCase()))) {
+                const shouldSkip = shouldSkipRecipient(data.recipient, data.date, settingsCache);
+
+                if (shouldSkip) {
                      errors.push(`ID ${finalId}: Skipped (Name)`);
                      if (!failedTransaction) {
                          failedTransaction = {
