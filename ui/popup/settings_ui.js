@@ -6,6 +6,8 @@ export class SettingsUI {
         this.agePlus = document.getElementById('age-plus');
         this.aiBehaviorSelect = document.getElementById('ai-behavior-select');
         this.targetNameInput = document.getElementById('target-name-input');
+        this.skipByNameCheckbox = document.getElementById('skip-by-name-checkbox');
+        this.skippedNamesContainer = document.getElementById('skipped-names-container');
         this.newSkippedNameInput = document.getElementById('new-skipped-name-input');
         this.addSkippedNameBtn = document.getElementById('add-skipped-name-btn');
         this.skippedNamesList = document.getElementById('skipped-names-list');
@@ -63,6 +65,8 @@ export class SettingsUI {
         if (data.maxReceiptAge) this.ageInput.value = data.maxReceiptAge;
         if (data.aiScanBehavior) this.aiBehaviorSelect.value = data.aiScanBehavior;
         if (data.targetName) this.targetNameInput.value = data.targetName;
+        this.skipByNameCheckbox.checked = data.skipByNameEnabled !== false;
+        this.toggleSkippedNamesContainer();
         this.renderSkippedNames(data.skippedNames || []);
         if (data.skippedNameAge !== undefined) this.skippedNameAgeInput.value = data.skippedNameAge;
         if (data.skippedNameDate) this.skippedNameDateInput.value = data.skippedNameDate;
@@ -108,6 +112,11 @@ export class SettingsUI {
         this.aiBehaviorSelect.onchange = () => chrome.storage.local.set({ aiScanBehavior: this.aiBehaviorSelect.value });
         this.targetNameInput.onchange = () => chrome.storage.local.set({ targetName: this.targetNameInput.value.trim() });
         
+        this.skipByNameCheckbox.onchange = () => {
+            chrome.storage.local.set({ skipByNameEnabled: this.skipByNameCheckbox.checked });
+            this.toggleSkippedNamesContainer();
+        };
+
         this.addSkippedNameBtn.onclick = () => this.addSkippedName();
         this.skippedNameAgeInput.onchange = () => chrome.storage.local.set({ skippedNameAge: parseFloat(this.skippedNameAgeInput.value) || 0 });
         this.skippedNameDateInput.onchange = () => chrome.storage.local.set({ skippedNameDate: this.skippedNameDateInput.value });
@@ -166,6 +175,10 @@ export class SettingsUI {
         if (this.importKeysBtn) this.setupImportKeys();
 
         this.addBankBtn.onclick = () => this.addBank();
+    }
+
+    toggleSkippedNamesContainer() {
+        this.skippedNamesContainer.style.display = this.skipByNameCheckbox.checked ? 'flex' : 'none';
     }
 
     renderSkippedNames(names) {

@@ -8,6 +8,7 @@ export let settingsCache = {
     maxReceiptAge: 0.5,
     headlessMode: true,
     aiScanBehavior: 'always_ai',
+    skipByNameEnabled: true,
     skippedNames: DEFAULT_SKIPPED_NAMES,
     skippedNameAge: 0,
     skippedNameDate: null,

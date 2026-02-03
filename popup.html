@@ -362,25 +362,30 @@
         <input type="text" id="target-name-input" placeholder="Tolashii Surrum Chonnaloo" class="input-styled" style="width: 120px;">
       </div>
       <div class="setting-row" style="flex-direction: column; align-items: stretch;">
-        <div class="setting-row-label" style="margin-bottom: 8px;">
-          <span class="setting-name">Skipped Recipients</span>
-          <span class="setting-description">Skip these names unless exceptions below apply:</span>
+        <div class="setting-row" style="margin-bottom: 8px; padding: 0;">
+            <div class="setting-row-label">
+              <span class="setting-name">Skip by Name</span>
+              <span class="setting-description">Skip specific recipients automatically.</span>
+            </div>
+            <label class="toggle-switch"><input type="checkbox" id="skip-by-name-checkbox"><span class="slider"></span></label>
         </div>
-        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-            <input type="text" id="new-skipped-name-input" placeholder="Enter name to skip" class="input-styled" style="flex: 1;">
-            <button id="add-skipped-name-btn" class="input-styled" style="background: #3b82f6; color: white; font-weight: bold; cursor: pointer; width: 32px;">+</button>
-        </div>
-        <div id="skipped-names-list" style="display: flex; flex-direction: column; gap: 4px; max-height: 120px; overflow-y: auto; padding: 2px; margin-bottom: 8px;"></div>
-        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f1f5f9; padding-top: 8px;">
-             <span class="setting-description">Verify if newer than (hours):</span>
-             <input type="number" id="skipped-name-age-input" value="0" min="0" class="input-styled" style="width: 50px; text-align: center;" title="0 = Ignore Rule">
-        </div>
-        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f1f5f9; padding-top: 8px; margin-top: 4px;">
-             <span class="setting-description">OR Verify if older than:</span>
-             <div style="display: flex; gap: 4px;">
-                 <input type="date" id="skipped-name-date-input" class="input-styled" style="width: 110px; font-family: inherit; font-size: 11px;">
-                 <button id="clear-skipped-name-date-btn" class="input-styled" style="padding: 0 6px; cursor: pointer; font-size: 10px; background: #f1f5f9; color: #64748b;" title="Clear Date">×</button>
-             </div>
+        <div id="skipped-names-container" style="display:none; flex-direction: column; gap: 8px; border-left: 2px solid #f1f5f9; padding-left: 10px; margin-top: 5px;">
+            <div style="display: flex; gap: 8px;">
+                <input type="text" id="new-skipped-name-input" placeholder="Enter name to skip" class="input-styled" style="flex: 1;">
+                <button id="add-skipped-name-btn" class="input-styled" style="background: #3b82f6; color: white; font-weight: bold; cursor: pointer; width: 32px;">+</button>
+            </div>
+            <div id="skipped-names-list" style="display: flex; flex-direction: column; gap: 4px; max-height: 120px; overflow-y: auto; padding: 2px;"></div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f1f5f9; padding-top: 8px;">
+                 <span class="setting-description">Verify if newer than (hours):</span>
+                 <input type="number" id="skipped-name-age-input" value="0" min="0" class="input-styled" style="width: 50px; text-align: center;" title="0 = Ignore Rule">
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f1f5f9; padding-top: 8px; margin-top: 4px;">
+                 <span class="setting-description">OR Verify if older than:</span>
+                 <div style="display: flex; gap: 4px;">
+                     <input type="date" id="skipped-name-date-input" class="input-styled" style="width: 110px; font-family: inherit; font-size: 11px;">
+                     <button id="clear-skipped-name-date-btn" class="input-styled" style="padding: 0 6px; cursor: pointer; font-size: 10px; background: #f1f5f9; color: #64748b;" title="Clear Date">×</button>
+                 </div>
+            </div>
         </div>
       </div>
       <div class="setting-row">

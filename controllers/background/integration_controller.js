@@ -30,6 +30,7 @@ function parseBankDateStr(dateStr) {
  * 4. EXCEPTION 2: If "Verify if older than Date" is set AND tx is older -> Verify.
  */
 function shouldSkipRecipient(recipientName, dateStr, settings) {
+    if (settings.skipByNameEnabled === false) return false;
     const skippedNames = settings.skippedNames || [];
     if (!recipientName) return false;
     
