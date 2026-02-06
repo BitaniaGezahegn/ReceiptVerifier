@@ -11,7 +11,6 @@ export class SettingsUI {
         this.newSkippedNameInput = document.getElementById('new-skipped-name-input');
         this.addSkippedNameBtn = document.getElementById('add-skipped-name-btn');
         this.skippedNamesList = document.getElementById('skipped-names-list');
-        this.skippedNameAgeInput = document.getElementById('skipped-name-age-input');
         this.skippedNameDateInput = document.getElementById('skipped-name-date-input');
         this.clearSkippedNameDateBtn = document.getElementById('clear-skipped-name-date-btn');
         this.headlessCheckbox = document.getElementById('headless-checkbox');
@@ -68,7 +67,6 @@ export class SettingsUI {
         this.skipByNameCheckbox.checked = data.skipByNameEnabled !== false;
         this.toggleSkippedNamesContainer();
         this.renderSkippedNames(data.skippedNames || []);
-        if (data.skippedNameAge !== undefined) this.skippedNameAgeInput.value = data.skippedNameAge;
         if (data.skippedNameDate) this.skippedNameDateInput.value = data.skippedNameDate;
         
         this.headlessCheckbox.checked = data.headlessMode !== false;
@@ -118,7 +116,6 @@ export class SettingsUI {
         };
 
         this.addSkippedNameBtn.onclick = () => this.addSkippedName();
-        this.skippedNameAgeInput.onchange = () => chrome.storage.local.set({ skippedNameAge: parseFloat(this.skippedNameAgeInput.value) || 0 });
         this.skippedNameDateInput.onchange = () => chrome.storage.local.set({ skippedNameDate: this.skippedNameDateInput.value });
         this.clearSkippedNameDateBtn.onclick = () => {
             this.skippedNameDateInput.value = "";

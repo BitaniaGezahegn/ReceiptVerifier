@@ -10,7 +10,6 @@ export let settingsCache = {
     aiScanBehavior: 'always_ai',
     skipByNameEnabled: true,
     skippedNames: DEFAULT_SKIPPED_NAMES,
-    skippedNameAge: 0,
     skippedNameDate: null,
     targetName: TARGET_NAME,
     telegramBotToken: "8445114042:AAFdEkeL8ccF329qgiY9edAm6bIfseqJzQU",

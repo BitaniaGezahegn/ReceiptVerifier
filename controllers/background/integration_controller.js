@@ -26,8 +26,7 @@ function parseBankDateStr(dateStr) {
  * Logic:
  * 1. If name NOT in list -> Don't Skip.
  * 2. If name IN list -> Default to SKIP.
- * 3. EXCEPTION 1: If "Verify if newer than X hours" is set AND tx is younger -> Verify.
- * 4. EXCEPTION 2: If "Verify if older than Date" is set AND tx is older -> Verify.
+ * 3. EXCEPTION: If "Verify if older than Date" is set AND tx is older -> Verify.
  */
 function shouldSkipRecipient(recipientName, reason, dateStr, settings) {
     if (settings.skipByNameEnabled === false) return false;
@@ -46,14 +45,7 @@ function shouldSkipRecipient(recipientName, reason, dateStr, settings) {
     const txTime = parseBankDateStr(dateStr);
     if (!txTime) return true; // Skip if we can't parse date to be safe
 
-    // 1. Check Age Threshold (Hours) - "Verify if Newer"
-    const skippedNameAge = settings.skippedNameAge || 0;
-    if (skippedNameAge > 0) {
-        const ageHours = (Date.now() - txTime) / (1000 * 60 * 60);
-        if (ageHours < skippedNameAge) return false; // Verify (It's fresh)
-    }
-
-    // 2. Check Date Threshold - "Verify if Older" (User Request)
+    // Check Date Threshold - "Verify if Older"
     const skippedNameDate = settings.skippedNameDate; // YYYY-MM-DD
     if (skippedNameDate) {
         const cutoffTime = new Date(skippedNameDate).getTime();
