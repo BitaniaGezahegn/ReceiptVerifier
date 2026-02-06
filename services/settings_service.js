@@ -1,5 +1,5 @@
 // c:\Users\BT\Desktop\Venv\zOther\Ebirr_Chrome_Verifier\services\settings_service.js
-import { DEFAULT_API_KEY, TARGET_NAME, DEFAULT_BANKS } from '../config.js';
+import { DEFAULT_API_KEY, TARGET_NAME, DEFAULT_BANKS, DEFAULT_SKIPPED_NAMES } from '../config.js';
 
 export let settingsCache = {
     apiKeys: [DEFAULT_API_KEY],
@@ -8,6 +8,9 @@ export let settingsCache = {
     maxReceiptAge: 0.5,
     headlessMode: true,
     aiScanBehavior: 'always_ai',
+    skipByNameEnabled: true,
+    skippedNames: DEFAULT_SKIPPED_NAMES,
+    skippedNameDate: null,
     targetName: TARGET_NAME,
     telegramBotToken: "8445114042:AAFdEkeL8ccF329qgiY9edAm6bIfseqJzQU",
     telegramChatId: "5282771696", // Add more IDs here separated by commas: "ID1, ID2, ID3"
@@ -33,6 +36,7 @@ export const initSettings = async () => {
         if (!settingsCache.apiKeys || settingsCache.apiKeys.length === 0) settingsCache.apiKeys = [DEFAULT_API_KEY];
         if (!settingsCache.banks || settingsCache.banks.length === 0) settingsCache.banks = DEFAULT_BANKS;
         if (!settingsCache.targetName) settingsCache.targetName = TARGET_NAME;
+        if (!settingsCache.skippedNames) settingsCache.skippedNames = DEFAULT_SKIPPED_NAMES;
 
         chrome.storage.onChanged.addListener((changes, area) => {
             if (area === 'local') {
