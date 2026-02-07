@@ -128,6 +128,23 @@ export class DomManager {
         title.style.cssText = "margin-top:0; color:#1e293b; font-size:16px; font-weight:700; border-bottom:1px solid #f1f5f9; padding-bottom:12px; margin-bottom:15px;";
         modal.appendChild(title);
 
+        // Calculate counts from current page cache
+        const counts = { "Random": 0, "Bank 404": 0, "Repeat": 0, "Under 50": 0, "Skipped Name": 0, "PDF": 0 };
+        const rows = document.querySelectorAll(SELECTORS.row);
+        rows.forEach(row => {
+            if (row.classList.contains('table-head')) return;
+            const firstCell = row.querySelector('td:first-child');
+            if (!firstCell) return;
+            const pageTxId = firstCell.innerText.trim();
+            const cached = localStorage.getItem(`ebirr_cache_${pageTxId}`);
+            if (cached) {
+                try {
+                    const data = JSON.parse(cached);
+                    if (counts.hasOwnProperty(data.status)) counts[data.status]++;
+                } catch (e) {}
+            }
+        });
+
         const options = [
             { label: "Random / Unknown", value: "Random" },
             { label: "Bank 404 (Not Found)", value: "Bank 404" },
@@ -137,13 +154,17 @@ export class DomManager {
             { label: "PDF", value: "PDF" }
         ];
 
+        // Sort options by count, descending
+        options.sort((a, b) => (counts[b.value] || 0) - (counts[a.value] || 0));
+
         const container = document.createElement('div');
         container.style.cssText = "display:flex; flex-direction:column; gap:10px; margin-bottom:20px;";
 
         options.forEach(opt => {
+            const count = counts[opt.value] || 0;
             const label = document.createElement('label');
             label.style.cssText = "display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; color:#334155; user-select:none;";
-            label.innerHTML = `<input type="checkbox" value="${opt.value}" style="cursor:pointer; width:16px; height:16px; accent-color:#ef4444;"> ${opt.label}`;
+            label.innerHTML = `<input type="checkbox" value="${opt.value}" style="cursor:pointer; width:16px; height:16px; accent-color:#ef4444;"> <span style="flex:1;">${opt.label}</span> <span style="color:#64748b; font-weight:600; font-size:12px; background:#f1f5f9; padding:2px 6px; border-radius:4px;">${count}</span>`;
             container.appendChild(label);
         });
         modal.appendChild(container);
