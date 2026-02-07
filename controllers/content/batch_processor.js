@@ -67,6 +67,82 @@ export class BatchProcessor {
         this.domManager.updateBatchButtonVisuals(this.isBatchRunning, this.settings.fullAutoMode);
     }
 
+    showRejectOptions() {
+        this.domManager.showRejectModal((types) => this.startBulkReject(types));
+    }
+
+    startBulkReject(types) {
+        if (this.isBatchRunning) {
+            showNotification("Please stop the current batch first.", "error");
+            return;
+        }
+        
+        const rows = Array.from(document.querySelectorAll(SELECTORS.row));
+        const targets = [];
+
+        rows.forEach(row => {
+            if (row.classList.contains('table-head')) return;
+            
+            const firstCell = row.querySelector('td:first-child');
+            if (!firstCell) return;
+            const pageTxId = firstCell.innerText.trim();
+            const cached = localStorage.getItem(`ebirr_cache_${pageTxId}`);
+            
+            if (cached) {
+                try {
+                    const data = JSON.parse(cached);
+                    if (types.includes(data.status)) {
+                        targets.push({ row, data });
+                    }
+                } catch(e) {}
+            }
+        });
+
+        if (targets.length === 0) {
+            showNotification("No matching transactions found.", "error");
+            return;
+        }
+
+        if (!confirm(`Found ${targets.length} transactions to reject. Proceed?`)) return;
+
+        this.isBatchRunning = true;
+        showNotification(`Rejecting ${targets.length} transactions...`, "process");
+        this.processRejectQueue(targets);
+    }
+
+    processRejectQueue(targets) {
+        if (!this.isBatchRunning || targets.length === 0) {
+            this.isBatchRunning = false;
+            showNotification("Bulk Reject Complete", "success");
+            return;
+        }
+
+        const { row, data } = targets.shift();
+        if (!document.body.contains(row)) {
+            this.processRejectQueue(targets);
+            return;
+        }
+
+        this.domManager.scrollToRow(row);
+        const rejectLink = this.domManager.columnIndexes.reject ? row.querySelector(`td:nth-child(${this.domManager.columnIndexes.reject}) a`) : null;
+        const imgLink = row.querySelector(SELECTORS.imageLink);
+        const imgUrl = imgLink ? imgLink.href : null;
+
+        if (rejectLink) {
+            safeClick(rejectLink);
+            this.domManager.waitForModalAndFill(data, 'reject', imgUrl, data.id, true);
+            
+            // Wait for row removal or timeout before next
+            this.domManager.waitForRowRemoval(imgUrl, () => {
+                 setTimeout(() => {
+                     this.processRejectQueue(targets);
+                 }, this.speedConfig.batchDelay); 
+            });
+        } else {
+            this.processRejectQueue(targets);
+        }
+    }
+
     startBatch() {
         this.isBatchRunning = true;
         this.activeBatchCount = 0;

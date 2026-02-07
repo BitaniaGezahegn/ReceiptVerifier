@@ -36,6 +36,7 @@ export class SettingsUI {
         this.retryVerifiedCheckbox = document.getElementById('retry-verified-checkbox');
         this.autoRefreshInput = document.getElementById('auto-refresh-interval');
         this.speedSelect = document.getElementById('speed-select');
+        this.triggerRejectAllBtn = document.getElementById('trigger-reject-all-btn');
         
         this.clearCacheBtn = document.getElementById('clear-cache-btn');
         this.keyInput = document.getElementById('new-key-input');
@@ -162,6 +163,17 @@ export class SettingsUI {
         };
 
         this.speedSelect.onchange = () => chrome.storage.local.set({ processingSpeed: this.speedSelect.value });
+
+        if (this.triggerRejectAllBtn) {
+            this.triggerRejectAllBtn.onclick = () => {
+                chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+                    if (tabs[0]) {
+                        chrome.tabs.sendMessage(tabs[0].id, { action: "openRejectModal" });
+                        window.close();
+                    }
+                });
+            };
+        }
 
         if (this.clearCacheBtn) {
             this.clearCacheBtn.onclick = () => this.showClearCacheConfirmation();

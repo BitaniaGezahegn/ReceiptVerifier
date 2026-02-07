@@ -44,7 +44,7 @@ export class DomManager {
 
     scanAndInject(verificationState, callbacks) {
         this.checkPendingRequests();
-        this.injectBatchControls(callbacks.onBatchToggle);
+        this.injectBatchControls(callbacks.onBatchToggle, callbacks.onRejectAll);
 
         const rows = document.querySelectorAll(SELECTORS.row);
         rows.forEach((row) => {
@@ -77,12 +77,13 @@ export class DomManager {
         }
     }
 
-    injectBatchControls(onToggle) {
+    injectBatchControls(onToggle, onRejectAll) {
         const targetContainer = document.querySelector('.buttons-wrap');
         if (!targetContainer || document.getElementById('ebirr-batch-btn')) return;
 
         const btn = document.createElement('button');
         btn.id = 'ebirr-batch-btn';
+        btn.type = 'button';
         btn.className = "btn btn-success"; 
         btn.style.cssText = "margin-left: 5px; background-color: #3b82f6; border-color: #3b82f6; color: white; min-width: 130px;";
         
@@ -92,7 +93,87 @@ export class DomManager {
         };
 
         targetContainer.appendChild(btn);
+
+        // Reject All Button
+        if (!document.getElementById('ebirr-reject-all-btn')) {
+            const rejectBtn = document.createElement('button');
+            rejectBtn.id = 'ebirr-reject-all-btn';
+            rejectBtn.type = 'button';
+            rejectBtn.className = "btn btn-danger";
+            rejectBtn.innerHTML = '<i class="fa fa-trash"></i> Reject All';
+            rejectBtn.style.cssText = "margin-left: 5px; background-color: #ef4444; border-color: #ef4444; color: white; min-width: 100px;";
+            rejectBtn.onclick = (e) => {
+                e.preventDefault();
+                if (onRejectAll) onRejectAll();
+            };
+            targetContainer.appendChild(rejectBtn);
+        }
+
         this.updateBatchButtonVisuals(this.buttonState.isRunning, this.buttonState.isAuto, this.buttonState.count);
+    }
+
+    showRejectModal(onConfirm) {
+        const existing = document.getElementById('ebirr-reject-modal');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'ebirr-reject-modal';
+        overlay.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15, 23, 42, 0.6); z-index:10000; display:flex; align-items:center; justify-content:center; font-family:'Segoe UI', sans-serif;";
+
+        const modal = document.createElement('div');
+        modal.style.cssText = "background:white; padding:20px; border-radius:12px; width:320px; box-shadow:0 10px 25px rgba(0,0,0,0.2); border: 1px solid #e2e8f0;";
+
+        const title = document.createElement('h3');
+        title.innerText = "Bulk Reject Transactions";
+        title.style.cssText = "margin-top:0; color:#1e293b; font-size:16px; font-weight:700; border-bottom:1px solid #f1f5f9; padding-bottom:12px; margin-bottom:15px;";
+        modal.appendChild(title);
+
+        const options = [
+            { label: "Random / Unknown", value: "Random" },
+            { label: "Bank 404 (Not Found)", value: "Bank 404" },
+            { label: "Repeat / Duplicate", value: "Repeat" },
+            { label: "Under 50", value: "Under 50" },
+            { label: "Skipped Name", value: "Skipped Name" },
+            { label: "PDF", value: "PDF" }
+        ];
+
+        const container = document.createElement('div');
+        container.style.cssText = "display:flex; flex-direction:column; gap:10px; margin-bottom:20px;";
+
+        options.forEach(opt => {
+            const label = document.createElement('label');
+            label.style.cssText = "display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; color:#334155; user-select:none;";
+            label.innerHTML = `<input type="checkbox" value="${opt.value}" style="cursor:pointer; width:16px; height:16px; accent-color:#ef4444;"> ${opt.label}`;
+            container.appendChild(label);
+        });
+        modal.appendChild(container);
+
+        const footer = document.createElement('div');
+        footer.style.cssText = "display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #f1f5f9; padding-top:15px;";
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.innerText = "Cancel";
+        cancelBtn.style.cssText = "padding:8px 16px; border:1px solid #cbd5e1; background:white; color:#475569; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600;";
+        cancelBtn.onclick = () => overlay.remove();
+
+        const confirmBtn = document.createElement('button');
+        confirmBtn.innerText = "Reject Selected";
+        confirmBtn.style.cssText = "padding:8px 16px; border:none; background:#ef4444; color:white; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600; box-shadow: 0 1px 2px rgba(0,0,0,0.1);";
+        confirmBtn.onclick = () => {
+            const selected = Array.from(container.querySelectorAll('input:checked')).map(cb => cb.value);
+            if (selected.length === 0) {
+                alert("Please select at least one type to reject.");
+                return;
+            }
+            overlay.remove();
+            onConfirm(selected);
+        };
+
+        footer.appendChild(cancelBtn);
+        footer.appendChild(confirmBtn);
+        modal.appendChild(footer);
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
     }
 
     updateBatchButtonVisuals(isBatchRunning, fullAutoMode, pendingCount = 0) {

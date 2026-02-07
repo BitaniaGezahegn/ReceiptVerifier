@@ -45,7 +45,8 @@ async function init() {
     domManager.scanAndInject(batchProcessor.verificationState, {
         onVerify: (row, url) => batchProcessor.startVerification(row, url),
         onCancel: (url) => batchProcessor.cancelVerification(url),
-        onBatchToggle: (btn) => batchProcessor.toggleBatch(btn)
+        onBatchToggle: (btn) => batchProcessor.toggleBatch(btn),
+        onRejectAll: () => batchProcessor.showRejectOptions()
     });
     batchProcessor.restoreAllRows();
     batchProcessor.checkPendingAlert();
@@ -56,7 +57,8 @@ async function init() {
         domManager.scanAndInject(batchProcessor.verificationState, {
             onVerify: (row, url) => batchProcessor.startVerification(row, url),
             onCancel: (url) => batchProcessor.cancelVerification(url),
-            onBatchToggle: (btn) => batchProcessor.toggleBatch(btn)
+            onBatchToggle: (btn) => batchProcessor.toggleBatch(btn),
+            onRejectAll: () => batchProcessor.showRejectOptions()
         });
         batchProcessor.restoreAllRows();
         batchProcessor.checkPendingAlert();
@@ -116,6 +118,11 @@ function handleBackgroundMessage(request) {
             safeClick(rejectLink);
             domManager.waitForModalAndFill(request.data, 'reject', request.imgUrl, request.extractedId, false);
         }
+        return;
+    }
+
+    if (request.action === "openRejectModal") {
+        batchProcessor.showRejectOptions();
         return;
     }
 
