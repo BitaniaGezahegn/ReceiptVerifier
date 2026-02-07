@@ -2,6 +2,7 @@
 export const SELECTORS = {
     headerRow: 'tr[name="table-header"]',
     row: '.table-vertical table tr:not(.table-head):not(.total-row)',
+    tableContainer: '.table-vertical',
     amount: 'td.text-right span',
     imageLink: 'a[href*="WebUserDocuments"]',
     

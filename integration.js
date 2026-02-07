@@ -109,6 +109,8 @@ function handleBackgroundMessage(request) {
         const row = domManager.findRowByImgUrl(request.imgUrl);
         if (!row) return;
 
+        domManager.scrollToRow(row);
+
         const rejectLink = domManager.columnIndexes.reject ? row.querySelector(`td:nth-child(${domManager.columnIndexes.reject}) a`) : null;
         if (rejectLink) {
             safeClick(rejectLink);

@@ -186,6 +186,9 @@ export class BatchProcessor {
     }
 
     startVerification(row, imgUrl) {
+        // Auto-scroll to ensure visibility
+        this.domManager.scrollToRow(row);
+
         const amountSpan = row.querySelector(SELECTORS.amount);
         if (!amountSpan) { alert("Error: Could not find amount."); return; }
 

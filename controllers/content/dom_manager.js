@@ -158,6 +158,23 @@ export class DomManager {
         });
     }
 
+    scrollToRow(row) {
+        // 1. Standard scroll
+        if (row && row.scrollIntoView) {
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        // 2. Explicit container scroll (Fix for table-vertical)
+        const container = document.querySelector(SELECTORS.tableContainer);
+        if (container && row) {
+            const rowRect = row.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            const relativeTop = rowRect.top - containerRect.top;
+            const targetTop = container.scrollTop + relativeTop - (container.clientHeight / 2) + (row.clientHeight / 2);
+            container.scrollTo({ top: targetTop, behavior: 'smooth' });
+        }
+    }
+
     waitForModalAndFill(result, mode, imgUrl, transId, isBatch) {
         const interval = setInterval(() => {
             const modal = document.querySelector(SELECTORS.modal);
