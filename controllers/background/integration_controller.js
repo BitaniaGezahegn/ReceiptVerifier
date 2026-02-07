@@ -12,10 +12,22 @@ import { reportActivity, reportOutcome } from '../../services/watchdog_service.j
 function parseBankDateStr(dateStr) {
     if (!dateStr) return null;
     try {
+        // 1. Try Standard Bank Format: YYYY-MM-DD HH:MM:SS +ZZZZ
         const p = dateStr.match(/(\d{4})-(\d{2})-(\d{2})\s(\d{2}):(\d{2}):(\d{2})\s(\+\d{4})/);
         if (p) {
             return new Date(`${p[1]}-${p[2]}-${p[3]}T${p[4]}:${p[5]}:${p[6]}${p[7].slice(0,3)}:${p[7].slice(3)}`).getTime();
         }
+        
+        // 2. Try DD-MM-YYYY or DD/MM/YYYY (Common in some regions)
+        const p2 = dateStr.match(/(\d{2})-/-/(?:\s(\d{2}):(\d{2}):(\d{2}))?/);
+        if (p2) {
+             const year = p2[3];
+             const month = p2[2];
+             const day = p2[1];
+             const time = p2[4] ? `T${p2[4]}:${p2[5]}:${p2[6]}` : "T00:00:00";
+             return new Date(`${year}-${month}-${day}${time}`).getTime();
+        }
+
         const ts = new Date(dateStr).getTime();
         return isNaN(ts) ? null : ts;
     } catch (e) { return null; }
@@ -43,11 +55,12 @@ function shouldSkipRecipient(recipientName, reason, dateStr, settings) {
     }
 
     const txTime = parseBankDateStr(dateStr);
-    if (!txTime) return true; // Skip if we can't parse date to be safe
 
     // Check Date Threshold - "Verify if Older"
     const skippedNameDate = settings.skippedNameDate; // YYYY-MM-DD
     if (skippedNameDate) {
+        if (!txTime) return false; // If date is unparseable, verify to be safe
+
         const cutoffTime = new Date(skippedNameDate).getTime();
         // If txTime is BEFORE cutoff, we Verify (return false for skip)
         if (txTime < cutoffTime) return false;
