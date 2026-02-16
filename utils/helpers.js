@@ -60,3 +60,7 @@ export function getMimeTypeFromDataUrl(dataUrl) {
     const match = dataUrl.match(/^data:(image\/[a-zA-Z]+);base64,/);
     return match ? match[1] : 'image/jpeg';
 }
+
+export function isRetryableStatus(status) {
+    return status === "Bank 404" || status === "AI Error" || status === "API Limit" || status === "Offline" || status === "Image Load Failed";
+}

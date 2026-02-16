@@ -2,7 +2,7 @@
 import { db, auth } from './firebase_config.js';
 import { doc, setDoc, getDoc, getDocs, collection, query, orderBy, limit, increment, deleteDoc, where, onSnapshot, writeBatch, startAfter } from '../firebase/firebase-firestore.js';
 import { ensureAuthReady } from './auth_service.js';
-
+import { isRetryableStatus } from '../utils/helpers.js';
 // Collection Names
 const COL_TX = "transactions";
 const COL_STATS = "daily_stats";
@@ -50,6 +50,16 @@ export async function logTransactionResult(id, verificationResult, existingTx = 
     const isSuccess = statusToSave === "Verified" || statusToSave.startsWith("AA");
     const now = Date.now();
 
+    // Calculate repeat count: Don't increment if the previous status was a failure/retryable
+    let repeatCount = 0;
+    if (existingTx) {
+        const wasFailure = isRetryableStatus(existingTx.status);
+        repeatCount = (existingTx.repeatCount || 0) + (wasFailure ? 0 : 1);
+    }
+
+    // Ensure Bank 404 saves as incomplete (null sender/date) so it triggers retry logic next time
+    const isBank404 = statusToSave === "Bank 404";
+
     // Build the canonical payload
     const payload = {
         ...(existingTx || {}), // Start with existing data if it's a repeat
@@ -58,12 +68,12 @@ export async function logTransactionResult(id, verificationResult, existingTx = 
         status: statusToSave,
         timestamp: existingTx ? existingTx.timestamp : now, // Keep original verification time for new entries
         dateVerified: existingTx ? existingTx.dateVerified : new Date(now).toLocaleString(),
-        senderName: verificationResult.senderName || (existingTx && existingTx.senderName) || null,
-        senderPhone: verificationResult.senderPhone || (existingTx && existingTx.senderPhone) || null,
-        recipientName: verificationResult.foundName || (existingTx && existingTx.recipientName) || null,
-        bankDate: verificationResult.bankDate || (existingTx && existingTx.bankDate) || null,
+        senderName: isBank404 ? null : (verificationResult.senderName || (existingTx && existingTx.senderName) || null),
+        senderPhone: isBank404 ? null : (verificationResult.senderPhone || (existingTx && existingTx.senderPhone) || null),
+        recipientName: isBank404 ? null : (verificationResult.foundName || (existingTx && existingTx.recipientName) || null),
+        bankDate: isBank404 ? null : (verificationResult.bankDate || (existingTx && existingTx.bankDate) || null),
         transactionTime: parseBankDate(verificationResult.bankDate) || (existingTx && existingTx.transactionTime) || null,
-        repeatCount: existingTx ? (existingTx.repeatCount || 0) + 1 : 0,
+        repeatCount: repeatCount,
         processedBy: auth.currentUser.email,
         processedByUid: auth.currentUser.uid,
         lastUpdated: now,

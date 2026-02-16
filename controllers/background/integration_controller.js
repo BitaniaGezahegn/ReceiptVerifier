@@ -5,7 +5,7 @@ import { callAIVisionWithRetry } from '../../services/ai_service.js';
 import { getTransaction, logTransactionResult } from '../../services/storage_service.js';
 import { verifyTransactionData } from '../../services/verification.js';
 import { setupOffscreenDocument } from '../../services/offscreen_service.js';
-import { getMimeTypeFromDataUrl, getTimeAgo } from '../../utils/helpers.js';
+import { getMimeTypeFromDataUrl, getTimeAgo, isRetryableStatus } from '../../utils/helpers.js';
 import { auth } from '../../services/firebase_config.js';
 import { reportActivity, reportOutcome } from '../../services/watchdog_service.js';
 
@@ -277,7 +277,7 @@ export async function handleIntegrationVerify(request, tabId) {
     }
 
     if (old) {
-        const isIncomplete = !old.senderName || !old.bankDate;
+        const isIncomplete = !old.senderName || !old.bankDate || isRetryableStatus(old.status);
         if (!isIncomplete) {
             // It's a complete repeat, do the repeat logic and return.
             old.repeatCount = (old.repeatCount || 0) + 1;
@@ -590,7 +590,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                 }
 
                 if (old) {
-                    const isIncomplete = !old.senderName || !old.bankDate;
+                    const isIncomplete = !old.senderName || !old.bankDate || isRetryableStatus(old.status);
                     if (!isIncomplete) {
                         // It's a complete repeat. Log and continue.
                         old.repeatCount = (old.repeatCount || 0) + 1;
