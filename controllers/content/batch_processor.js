@@ -83,9 +83,7 @@ export class BatchProcessor {
         rows.forEach(row => {
             if (row.classList.contains('table-head')) return;
             
-            const firstCell = row.querySelector('td:first-child');
-            if (!firstCell) return;
-            const pageTxId = firstCell.innerText.trim();
+            const pageTxId = this.domManager.getTxId(row);
             const cached = localStorage.getItem(`ebirr_cache_${pageTxId}`);
             
             if (cached) {
@@ -816,9 +814,7 @@ export class BatchProcessor {
 
     saveRowState(row, data, buttonLabel = null) {
         try {
-            const firstCell = row.querySelector('td:first-child');
-            if (!firstCell) return;
-            const pageTxId = firstCell.innerText.trim();
+            const pageTxId = this.domManager.getTxId(row);
             if (!pageTxId) return;
 
             const cacheData = {
@@ -917,9 +913,7 @@ export class BatchProcessor {
     restoreRowState(row) {
         if (row.dataset.ebirrSkipped === "true") return;
 
-        const firstCell = row.querySelector('td:first-child');
-        if (!firstCell) return;
-        const pageTxId = firstCell.innerText.trim();
+        const pageTxId = this.domManager.getTxId(row);
         if (!pageTxId) return;
 
         const cached = localStorage.getItem(`ebirr_cache_${pageTxId}`);
@@ -1010,6 +1004,24 @@ export class BatchProcessor {
                 }
             } catch (e) {
                 console.error("Error restoring row state", e);
+            }
+        }
+    }
+
+    clearCacheForTx(txId) {
+        localStorage.removeItem(`ebirr_cache_${txId}`);
+        showNotification(`Cache cleared for ${txId}`, "success");
+
+        const rows = document.querySelectorAll(SELECTORS.row);
+        for (let row of rows) {
+            if (this.domManager.getTxId(row) === txId) {
+                delete row.dataset.ebirrSkipped;
+                const imgLink = row.querySelector(SELECTORS.imageLink);
+                if (imgLink) {
+                    this.domManager.injectController(row, imgLink.href, null, { 
+                        onVerify: (r, u) => this.startVerification(r, u)
+                    });
+                }
             }
         }
     }

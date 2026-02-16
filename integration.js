@@ -46,7 +46,8 @@ async function init() {
         onVerify: (row, url) => batchProcessor.startVerification(row, url),
         onCancel: (url) => batchProcessor.cancelVerification(url),
         onBatchToggle: (btn) => batchProcessor.toggleBatch(btn),
-        onRejectAll: () => batchProcessor.showRejectOptions()
+        onRejectAll: () => batchProcessor.showRejectOptions(),
+        onClearCache: (txId) => batchProcessor.clearCacheForTx(txId)
     });
     batchProcessor.restoreAllRows();
     batchProcessor.checkPendingAlert();
@@ -58,7 +59,8 @@ async function init() {
             onVerify: (row, url) => batchProcessor.startVerification(row, url),
             onCancel: (url) => batchProcessor.cancelVerification(url),
             onBatchToggle: (btn) => batchProcessor.toggleBatch(btn),
-            onRejectAll: () => batchProcessor.showRejectOptions()
+            onRejectAll: () => batchProcessor.showRejectOptions(),
+            onClearCache: (txId) => batchProcessor.clearCacheForTx(txId)
         });
         batchProcessor.restoreAllRows();
         batchProcessor.checkPendingAlert();

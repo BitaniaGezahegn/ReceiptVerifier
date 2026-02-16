@@ -48,6 +48,11 @@ export class DomManager {
 
         const rows = document.querySelectorAll(SELECTORS.row);
         rows.forEach((row) => {
+            const firstCell = row.querySelector('td:first-child');
+            if (firstCell) {
+                this.injectClearCacheButton(firstCell, callbacks.onClearCache);
+            }
+
             if (row.classList.contains('table-head') || row.dataset.ebirrInjected) return;
             
             const imgLink = row.querySelector(SELECTORS.imageLink);
@@ -112,6 +117,46 @@ export class DomManager {
         this.updateBatchButtonVisuals(this.buttonState.isRunning, this.buttonState.isAuto, this.buttonState.count);
     }
 
+    injectClearCacheButton(cell, onClear) {
+        if (cell.querySelector('.ebirr-clear-cache')) return;
+
+        const text = cell.innerText.trim();
+        if (!text) return;
+
+        const btn = document.createElement('span');
+        btn.className = 'ebirr-clear-cache';
+        btn.innerHTML = ' 🧹';
+        btn.title = "Clear Cache";
+        btn.style.cssText = "cursor:pointer; font-size:12px; margin-left:5px; opacity:0.3; transition:opacity 0.2s; user-select:none;";
+        
+        btn.onmouseover = () => btn.style.opacity = "1";
+        btn.onmouseout = () => btn.style.opacity = "0.3";
+        
+        btn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const txId = this.getTxIdFromCell(cell);
+            if (txId && onClear) onClear(txId);
+        };
+
+        cell.appendChild(btn);
+    }
+
+    getTxIdFromCell(cell) {
+        if (!cell) return null;
+        let text = "";
+        cell.childNodes.forEach(n => {
+            if (n.nodeType === Node.TEXT_NODE) text += n.textContent;
+        });
+        const clean = text.trim();
+        if (clean) return clean;
+        return cell.innerText.replace('🧹', '').trim();
+    }
+
+    getTxId(row) {
+        return this.getTxIdFromCell(row.querySelector('td:first-child'));
+    }
+
     showRejectModal(onConfirm) {
         const existing = document.getElementById('ebirr-reject-modal');
         if (existing) existing.remove();
@@ -133,9 +178,7 @@ export class DomManager {
         const rows = document.querySelectorAll(SELECTORS.row);
         rows.forEach(row => {
             if (row.classList.contains('table-head')) return;
-            const firstCell = row.querySelector('td:first-child');
-            if (!firstCell) return;
-            const pageTxId = firstCell.innerText.trim();
+            const pageTxId = this.getTxId(row);
             const cached = localStorage.getItem(`ebirr_cache_${pageTxId}`);
             if (cached) {
                 try {
