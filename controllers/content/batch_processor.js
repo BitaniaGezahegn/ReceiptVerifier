@@ -270,9 +270,10 @@ export class BatchProcessor {
         const amount = parseFloat(rawAmount);
         const rowId = `req-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
+        // Extended timeout (90s) to prevent premature cancellation on slow networks
         const timeoutId = setTimeout(() => {
             this.handleTimeout(imgUrl, rowId);
-        }, TIMEOUT_MS);
+        }, 90000);
 
         const state = {
             status: 'processing',
@@ -429,8 +430,19 @@ export class BatchProcessor {
     }
 
     handleTimeout(imgUrl, rowId) {
-        this.handleImageFailure(imgUrl);
+        // Mark as skipped (true) to prevent immediate retry loop
+        this.handleImageFailure(imgUrl, false, true);
         showNotification("Request Timed Out", "error");
+
+        const row = this.domManager.findRowByImgUrl(imgUrl);
+        if (row) {
+            const container = row.querySelector('.ebirr-controller');
+            if (container) container.innerHTML = '<span style="color:#f59e0b; font-weight:bold; font-size:11px;">Timed Out</span>';
+            
+            // Persist "Timed Out" state so it is skipped even after page refresh
+            this.saveRowState(row, { status: "Timed Out", statusText: "Timed Out", color: "#f59e0b" });
+        }
+
         if (this.isBatchRunning) {
             this.activeBatchCount--;
             
