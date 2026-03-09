@@ -501,7 +501,7 @@ export class BatchProcessor {
                         this.activeBatchCount++;
                         this.startVerification(row, imgUrl);
                     }
-                }, "API Cooldown");
+                }, "API Cooldown"); 
             }
             return;
         }
