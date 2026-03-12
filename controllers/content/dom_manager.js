@@ -382,7 +382,11 @@ export class DomManager {
                 if (inputComment) { inputComment.value = ""; inputComment.dispatchEvent(new Event('input')); }
             }
         } else if (mode === 'reject') {
-            if (inputComment) { inputComment.value = result.status; inputComment.dispatchEvent(new Event('input')); }
+            if (inputComment) {
+                const comment = result.status === 'Skipped Name' ? 'Wrong Recipient' : result.status;
+                inputComment.value = comment;
+                inputComment.dispatchEvent(new Event('input'));
+            }
         }
 
         // Auto-Submit
