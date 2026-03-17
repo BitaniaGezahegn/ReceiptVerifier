@@ -20,6 +20,7 @@
   "host_permissions": [
     "https://*.my-managment.com/*",
     "https://transactioninfo.ebirr.com/*",
+    "https://cs.bankofabyssinia.com/*",
     "https://*.firebaseio.com/*",
     "https://*.googleapis.com/*",
     "https://api.groq.com/*",

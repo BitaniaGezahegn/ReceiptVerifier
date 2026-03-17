@@ -8,6 +8,7 @@ import * as TPL from './ui/templates.js';
 import './services/auth_service.js'; // Initialize Auth
 import { sendTelegramNotification } from './services/notification_service.js';
 import { startWatchdog, onWatchdogAlarm, reportActivity } from './services/watchdog_service.js';
+import { BOABruteforce } from './services/boa_service.js';
 
 // 1. INITIALIZE EXTENSION
 chrome.runtime.onInstalled.addListener(async () => {
@@ -104,3 +105,10 @@ self.ebirrTestPendingAlert = (count = 5) => {
 };
 
 self.ebirrTestTelegram = () => sendTelegramNotification("🔔 *Test Notification*\n\nSystem is connected successfully!");
+
+self.testBOA = async (prefix, suffix) => {
+    const solver = new BOABruteforce();
+    console.log(`Testing BOA Bruteforce for ${prefix}[X]${suffix}...`);
+    const result = await solver.solve(prefix, suffix);
+    console.log("BOA Result:", result || "Not Found");
+};
