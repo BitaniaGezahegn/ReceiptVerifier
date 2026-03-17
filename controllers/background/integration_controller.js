@@ -9,28 +9,44 @@ import { getMimeTypeFromDataUrl, getTimeAgo, isRetryableStatus } from '../../uti
 import { auth } from '../../services/firebase_config.js';
 import { reportActivity, reportOutcome } from '../../services/watchdog_service.js';
 
-function parseBankDateStr(dateStr) {
-    if (!dateStr) return null;
+function parseBankDate(dateStr) {
+    if (!dateStr || typeof dateStr !== 'string') return null;
+
+    const cleanedDateStr = dateStr.trim();
+
     try {
-        // 1. Try Standard Bank Format: YYYY-MM-DD HH:MM:SS +ZZZZ
-        const p = dateStr.match(/(\d{4})-(\d{2})-(\d{2})\s(\d{2}):(\d{2}):(\d{2})\s(\+\d{4})/);
-        if (p) {
-            return new Date(`${p[1]}-${p[2]}-${p[3]}T${p[4]}:${p[5]}:${p[6]}${p[7].slice(0,3)}:${p[7].slice(3)}`).getTime();
-        }
-        
-        // 2. Try DD-MM-YYYY or DD/MM/YYYY (Common in some regions)
-        const p2 = dateStr.match(/(\d{2})-/-/(?:\s(\d{2}):(\d{2}):(\d{2}))?/);
-        if (p2) {
-             const year = p2[3];
-             const month = p2[2];
-             const day = p2[1];
-             const time = p2[4] ? `T${p2[4]}:${p2[5]}:${p2[6]}` : "T00:00:00";
-             return new Date(`${year}-${month}-${day}${time}`).getTime();
+        // Attempt to parse with new Date(), which is good for ISO-like formats
+        // e.g., "2026-03-12 22:35:42 +0300 EAT"
+        const isoDate = new Date(cleanedDateStr);
+        if (!isNaN(isoDate.getTime()) && isoDate.getFullYear() > 1990) {
+            console.log(`[Ebirr Verifier] Parsed date as ISO-like: "${cleanedDateStr}" -> ${isoDate.toISOString()}`);
+            return isoDate.getTime();
         }
 
-        const ts = new Date(dateStr).getTime();
-        return isNaN(ts) ? null : ts;
-    } catch (e) { return null; }
+        // Fallback for ambiguous formats like DD/MM/YYYY or DD-MM-YYYY
+        const dmyMatch = cleanedDateStr.match(/^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+        if (dmyMatch) {
+            const day = dmyMatch[1].padStart(2, '0');
+            const month = dmyMatch[2].padStart(2, '0');
+            const year = dmyMatch[3];
+            const hour = dmyMatch[4] ? dmyMatch[4].padStart(2, '0') : '00';
+            const minute = dmyMatch[5] || '00';
+            const second = dmyMatch[6] || '00';
+            
+            // Construct as YYYY-MM-DDTHH:MM:SSZ to force UTC and avoid ambiguity
+            const dmyDate = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}Z`);
+            if (!isNaN(dmyDate.getTime())) {
+                console.log(`[Ebirr Verifier] Parsed date as DMY: "${cleanedDateStr}" -> ${dmyDate.toISOString()}`);
+                return dmyDate.getTime();
+            }
+        }
+
+        console.error(`[Ebirr Verifier] FAILED to parse date: "${cleanedDateStr}"`);
+        return null;
+    } catch (e) {
+        console.error(`[Ebirr Verifier] Error parsing date: "${cleanedDateStr}"`, e);
+        return null;
+    }
 }
 
 /**
@@ -54,16 +70,37 @@ function shouldSkipRecipient(recipientName, reason, dateStr, settings) {
         return false;
     }
 
-    const txTime = parseBankDateStr(dateStr);
+    console.log(`[Ebirr Verifier] Name matched skip list. Checking date for Tx: '${dateStr}'`);
+    const txTime = parseBankDate(dateStr);
 
     // Check Date Threshold - "Verify if Older"
     const skippedNameDate = settings.skippedNameDate; // YYYY-MM-DD
     if (skippedNameDate) {
-        if (!txTime) return false; // If date is unparseable, verify to be safe
+        if (!txTime) {
+            console.error(`[Ebirr Verifier] Date unparseable. Verifying to be safe.`);
+            return false; // If date is unparseable, verify to be safe
+        }
 
-        const cutoffTime = new Date(skippedNameDate).getTime();
-        // If txTime is BEFORE cutoff, we Verify (return false for skip)
-        if (txTime < cutoffTime) return false;
+        const txDate = new Date(txTime);
+        // IMPORTANT: We must use UTC methods to compare against the YYYY-MM-DD string
+        // which has no timezone info.
+        const txYear = txDate.getUTCFullYear();
+        const txMonth = String(txDate.getUTCMonth() + 1).padStart(2, '0');
+        const txDay = String(txDate.getUTCDate()).padStart(2, '0');
+        const txDateString = `${txYear}-${txMonth}-${txDay}`;
+
+        console.log(`[Ebirr Verifier] Comparing Tx Date: ${txDateString} vs. Cutoff Date: ${skippedNameDate}`);
+
+        // If the transaction's date string is less than the cutoff date string,
+        // it is "older", so we should verify it (return false for skip).
+        if (txDateString < skippedNameDate) {
+            console.log(`[Ebirr Verifier] Result: Transaction is older. VERIFYING.`);
+            return false;
+        } else {
+            console.log(`[Ebirr Verifier] Result: Transaction is NOT older. SKIPPING.`);
+        }
+    } else {
+        console.log(`[Ebirr Verifier] Result: No date cutoff set. SKIPPING.`);
     }
 
     return true; // Default: Skip
