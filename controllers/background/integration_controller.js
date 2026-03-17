@@ -5,49 +5,9 @@ import { callAIVisionWithRetry } from '../../services/ai_service.js';
 import { getTransaction, logTransactionResult } from '../../services/storage_service.js';
 import { verifyTransactionData } from '../../services/verification.js';
 import { setupOffscreenDocument } from '../../services/offscreen_service.js';
-import { getMimeTypeFromDataUrl, getTimeAgo, isRetryableStatus } from '../../utils/helpers.js';
+import { getMimeTypeFromDataUrl, getTimeAgo, isRetryableStatus, parseBankDate } from '../../utils/helpers.js';
 import { auth } from '../../services/firebase_config.js';
 import { reportActivity, reportOutcome } from '../../services/watchdog_service.js';
-
-function parseBankDate(dateStr) {
-    if (!dateStr || typeof dateStr !== 'string') return null;
-
-    const cleanedDateStr = dateStr.trim();
-
-    try {
-        // Attempt to parse with new Date(), which is good for ISO-like formats
-        // e.g., "2026-03-12 22:35:42 +0300 EAT"
-        const isoDate = new Date(cleanedDateStr);
-        if (!isNaN(isoDate.getTime()) && isoDate.getFullYear() > 1990) {
-            console.log(`[Ebirr Verifier] Parsed date as ISO-like: "${cleanedDateStr}" -> ${isoDate.toISOString()}`);
-            return isoDate.getTime();
-        }
-
-        // Fallback for ambiguous formats like DD/MM/YYYY or DD-MM-YYYY
-        const dmyMatch = cleanedDateStr.match(/^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
-        if (dmyMatch) {
-            const day = dmyMatch[1].padStart(2, '0');
-            const month = dmyMatch[2].padStart(2, '0');
-            const year = dmyMatch[3];
-            const hour = dmyMatch[4] ? dmyMatch[4].padStart(2, '0') : '00';
-            const minute = dmyMatch[5] || '00';
-            const second = dmyMatch[6] || '00';
-            
-            // Construct as YYYY-MM-DDTHH:MM:SSZ to force UTC and avoid ambiguity
-            const dmyDate = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}Z`);
-            if (!isNaN(dmyDate.getTime())) {
-                console.log(`[Ebirr Verifier] Parsed date as DMY: "${cleanedDateStr}" -> ${dmyDate.toISOString()}`);
-                return dmyDate.getTime();
-            }
-        }
-
-        console.error(`[Ebirr Verifier] FAILED to parse date: "${cleanedDateStr}"`);
-        return null;
-    } catch (e) {
-        console.error(`[Ebirr Verifier] Error parsing date: "${cleanedDateStr}"`, e);
-        return null;
-    }
-}
 
 /**
  * Determines if a recipient should be skipped based on settings.
