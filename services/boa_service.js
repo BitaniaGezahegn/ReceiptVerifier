@@ -1,6 +1,5 @@
 // c:\Users\BT\Desktop\Venv\zOther\Ebirr_Chrome_Verifier\services\boa_service.js
 import { getDateParser } from '../utils/date_converter.js';
-import { parseBOAReceipt } from './dom_parsers.js';
 
 export class BOABruteforce {
     constructor() {
@@ -60,29 +59,13 @@ export class BOABruteforce {
 
                     const result = await chrome.scripting.executeScript({
                         target: { tabId: this.tabId },
-                        func: this._detectionLogic
+                        func: detectionLogic
                     });
 
-                    const output = (result && result[0] && result[0].result) || { status: "ERROR" };
+                    const output = (result && result[0] && result[0].result) || { status: "ERROR", scannedText: "Script injection failed or returned null." };
 
-                    // Fallback: If TIMEOUT but we got HTML, try to parse it anyway. 
-                    // The visual page might be ready even if our specific text markers weren't found instantly.
-                    if (output.status === "TIMEOUT" && output.html) {
-                        console.warn(`[BOA Verifier] Timeout waiting for markers. Attempting to parse captured HTML...`);
-                    }
-
-                    // Attempt parsing if we have HTML (SUCCESS or TIMEOUT)
-                    if (output.html) {
-                        const parser = new DOMParser();
-                        const doc = parser.parseFromString(output.html, 'text/html');
-                        const boaData = parseBOAReceipt(doc);
-                        
-                        if (!boaData.recipient && output.html) {
-                            console.warn("[BOA Verifier] Parsed HTML but found no recipient");
-                        }
-                        
-                        // Only return if we actually found data, otherwise throw/continue to retry
-                        if (boaData.recipient) return { ...boaData, bank: 'BOA' };
+                    if (output.status === "SUCCESS" && output.data) {
+                        return { ...output.data, bank: 'BOA' };
                     }
 
                     if (output.status === "FAILURE") {
@@ -135,17 +118,12 @@ export class BOABruteforce {
                 // 3. Inject Detection Logic (Async MutationObserver)
                 const result = await chrome.scripting.executeScript({
                     target: { tabId: this.tabId },
-                    func: this._detectionLogic
+                    func: detectionLogic
                 });
 
                 const output = (result && result[0] && result[0].result) || { status: "ERROR" };
 
                 if (output.status === "SUCCESS") {
-                    // The brute-force just needs to find a valid page.
-                    // A quick check on the HTML to be sure.
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(output.html, 'text/html');
-                    if (doc.body.innerText.includes("Source Account"))
                     return candidateId;
                 }
                 
@@ -190,13 +168,20 @@ export class BOABruteforce {
             chrome.tabs.onUpdated.addListener(listener);
         });
     }
+}
 
-    /**
-     * Injected Script: Runs inside the bank page.
-     * Uses MutationObserver to detect React rendering changes.
-     */
-    _detectionLogic() {
-        return new Promise((resolve) => {
+/**
+ * Injected Script: Runs inside the bank page.
+ * Defined outside class to ensure clean serialization.
+ */
+function detectionLogic() {
+    return new Promise((resolve) => {
+        try {
+            if (!document || !document.body) {
+                resolve({ status: "FAILURE", scannedText: "Document body is null" });
+                return;
+            }
+
             const TIMEOUT_MS = 7000;
             let observer = null;
             let timer = null;
@@ -204,27 +189,46 @@ export class BOABruteforce {
             const finish = (result) => {
                 if (observer) observer.disconnect();
                 if (timer) clearTimeout(timer);
-                if (result) {
-                    result.html = document.body.innerHTML;
-                }
                 resolve(result);
             };
 
+            const scrape = () => {
+                const data = {};
+                // Direct DOM scraping inside the tab
+                const rows = document.querySelectorAll('#invoice table tbody tr');
+                rows.forEach(row => {
+                    const cells = row.querySelectorAll('td');
+                    if (cells.length === 2) {
+                        const key = cells[0].innerText.trim();
+                        const value = cells[1].innerText.trim();
+                        if (key.includes("Receiver's Name")) data.recipient = value;
+                        else if (key.includes("Transferred amount")) data.amount = value;
+                        else if (key.includes("Transaction Date")) data.date = value;
+                        else if (key.includes("Source Account Name")) data.senderName = value;
+                    }
+                });
+                return data;
+            };
+
             const scan = () => {
-                const text = document.body.innerText || "";
-                
-                // SUCCESS MARKERS
-                if (text.includes("Source Account") || text.includes("Reference Number") || text.includes("Receiver's Name") || text.includes("Transaction Type")) {
-                    finish({ status: "SUCCESS" });
-                    return true;
-                }
-                
-                // FAILURE MARKERS
-                if (text.includes("Invalid") || text.includes("not found")) {
-                    finish({ status: "FAILURE" });
-                    return true;
-                }
-                
+                try {
+                    const text = document.body.innerText || "";
+                    
+                    // SUCCESS MARKERS
+                    if (text.includes("Source Account") || text.includes("Reference Number") || text.includes("Receiver's Name") || text.includes("Transaction Type")) {
+                        const data = scrape();
+                        // Only consider it a success if we actually extracted the critical data (recipient)
+                        if (data.recipient) {
+                            finish({ status: "SUCCESS", data: data });
+                            return true;
+                        }
+                    }
+                    // FAILURE MARKERS
+                    if (text.includes("Invalid") || text.includes("not found")) {
+                        finish({ status: "FAILURE" });
+                        return true;
+                    }
+                } catch (e) { /* ignore inner scan errors */ }
                 return false;
             };
 
@@ -233,7 +237,10 @@ export class BOABruteforce {
 
             // 2. Observer for Async React Rendering
             observer = new MutationObserver(() => {
-                scan();
+                if (scan()) {
+                    observer.disconnect();
+                    if (timer) clearTimeout(timer);
+                }
             });
             observer.observe(document.body, { 
                 childList: true, 
@@ -245,6 +252,8 @@ export class BOABruteforce {
             timer = setTimeout(() => {
                 finish({ status: "TIMEOUT" });
             }, TIMEOUT_MS);
-        });
-    }
+        } catch (e) {
+            resolve({ status: "ERROR", scannedText: "Injection Error: " + e.message });
+        }
+    });
 }
