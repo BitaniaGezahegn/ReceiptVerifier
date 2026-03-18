@@ -121,67 +121,90 @@ export async function openAndVerifyFullData(id, originalTabId, expectedAmount, e
               const div = document.createElement('div');
               div.id = 'ebirr-loading-overlay';
               div.style = "position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#334155; color:white; padding:10px 20px; border-radius:20px; z-index:999999; font-family:sans-serif; font-size:14px; box-shadow:0 4px 15px rgba(0,0,0,0.3); display:flex; align-items:center; gap:10px;";
-              div.innerHTML = '<span>Verifying with Bank (BOA)...</span>';
+              div.innerHTML = '<span>Verifying with Bank (BOA)... This may take a moment.</span>';
               document.body.appendChild(div);
           }
       }).catch(() => {});
 
-      const verifier = new BOABruteforce(); // Can reuse this class for its tab management
-      const data = await verifier.verifyAndParse(id);
-      
+      let finalId = id;
+      let data = null;
+
+      if (id.includes('|')) {
+          const [partialId, sourceAccountSuffix] = id.split('|');
+          if (partialId.startsWith('FT') && sourceAccountSuffix.length === 4) {
+              const solver = new BOABruteforce();
+              const solvedId = await solver.solve(partialId, sourceAccountSuffix);
+              if (solvedId) {
+                  finalId = solvedId;
+                  // Re-verify with the full ID to get all data, since solve() only returns the ID
+                  const dataVerifier = new BOABruteforce();
+                  data = await dataVerifier.verifyAndParse(finalId);  
+              } else {
+                  // Failed to solve (maybe suffix was wrong or digit guess failed)
+                  console.warn("BOA Brute-force failed to solve ID.");
+                  data = { recipient: null }; 
+              }
+          } else {
+              data = { recipient: null }; // Malformed partial ID
+          }
+      } else {
+        const verifier = new BOABruteforce();
+        data = await verifier.verifyAndParse(id);
+      }
+
+      // This should be outside the if/else, but inside the BOA block
       chrome.scripting.executeScript({ target: { tabId: originalTabId }, func: () => document.getElementById('ebirr-loading-overlay')?.remove() }).catch(() => {});
-      
-      // Continue with the standard data handling logic
-      await handleVerificationData(id, data, originalTabId, expectedAmount, historyItem, repeatCount);
-      return;
-  }
 
-  // Standard flow for other banks
-  if (useHeadless) {
-    await setupOffscreenDocument();
-    chrome.scripting.executeScript({
-        target: { tabId: originalTabId },
-        func: () => {
-            const div = document.createElement('div');
-            div.id = 'ebirr-loading-overlay';
-            div.style = "position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#334155; color:white; padding:10px 20px; border-radius:20px; z-index:999999; font-family:sans-serif; font-size:14px; box-shadow:0 4px 15px rgba(0,0,0,0.3); display:flex; align-items:center; gap:10px;";
-            div.innerHTML = '<span>Verifying with Bank...</span>';
-            document.body.appendChild(div);
-        }
-    }).catch(() => {});
+      await handleVerificationData(finalId, data, originalTabId, expectedAmount, historyItem, repeatCount);
+      return; // IMPORTANT: End the BOA-specific flow here.
+  } else { // This was the missing part that caused the syntax error.
+    // Standard flow for other banks
+    if (useHeadless) {
+      await setupOffscreenDocument();
+      chrome.scripting.executeScript({
+          target: { tabId: originalTabId },
+          func: () => {
+              const div = document.createElement('div');
+              div.id = 'ebirr-loading-overlay';
+              div.style = "position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#334155; color:white; padding:10px 20px; border-radius:20px; z-index:999999; font-family:sans-serif; font-size:14px; box-shadow:0 4px 15px rgba(0,0,0,0.3); display:flex; align-items:center; gap:10px;";
+              div.innerHTML = '<span>Verifying with Bank...</span>';
+              document.body.appendChild(div);
+          }
+      }).catch(() => {});
 
-    chrome.runtime.sendMessage({ action: 'parseReceipt', url: baseUrl + id }, async (data) => {
-      await handleVerificationData(id, data, originalTabId, expectedAmount, historyItem, repeatCount);
-    });
-  } else {
-    // Legacy Mode: Open in new tab
-    chrome.tabs.create({ url: baseUrl + id }, (tab) => {
-        const listener = (tabId, changeInfo) => {
-            if (tabId === tab.id && changeInfo.status === 'complete') {
-                chrome.tabs.onUpdated.removeListener(listener);
-                
-                chrome.scripting.executeScript({
-                    target: { tabId: tab.id },
-                    func: UI.scrapeBankData,
-                    args: [BANK_XPATHS]
-                }, async (results) => {
-                    const data = results?.[0]?.result;
-                    
-                    if (!data || data.error || !data.recipient) {
-                        chrome.scripting.executeScript({
-                            target: { tabId: tab.id },
-                            func: (msg) => alert(msg),
-                            args: ["Verification Failed: " + (data?.error || "Data missing on page")]
-                        });
-                        return;
-                    }
+      chrome.runtime.sendMessage({ action: 'parseReceipt', url: baseUrl + id }, async (data) => {
+        await handleVerificationData(id, data, originalTabId, expectedAmount, historyItem, repeatCount);
+      });
+    } else {
+      // Legacy Mode: Open in new tab
+      chrome.tabs.create({ url: baseUrl + id }, (tab) => {
+          const listener = (tabId, changeInfo) => {
+              if (tabId === tab.id && changeInfo.status === 'complete') {
+                  chrome.tabs.onUpdated.removeListener(listener);
+                  
+                  chrome.scripting.executeScript({
+                      target: { tabId: tab.id },
+                      func: UI.scrapeBankData,
+                      args: [BANK_XPATHS]
+                  }, async (results) => {
+                      const data = results?.[0]?.result;
+                      
+                      if (!data || data.error || !data.recipient) {
+                          chrome.scripting.executeScript({
+                              target: { tabId: tab.id },
+                              func: (msg) => alert(msg),
+                              args: ["Verification Failed: " + (data?.error || "Data missing on page")]
+                          });
+                          return;
+                      }
 
-                    await handleVerificationData(id, data, tab.id, expectedAmount, historyItem, repeatCount);
-                });
-            }
-        };
-        chrome.tabs.onUpdated.addListener(listener);
-    });
+                      await handleVerificationData(id, data, tab.id, expectedAmount, historyItem, repeatCount);
+                  });
+              }
+          };
+          chrome.tabs.onUpdated.addListener(listener);
+      });
+    }
   }
 }
 
@@ -231,8 +254,9 @@ async function handleVerificationData(id, data, tabId, expectedAmount, historyIt
     chrome.scripting.executeScript({
       target: { tabId: tabId },
       func: UI.showResultOverlay,
-      args: [TPL.getResultOverlayHtml(result, repeatCount), id, result.status, result.foundAmt, result.senderName, result.senderPhone, result.timeStr, result.foundName]
+      args: [TPL.getResultOverlayHtml(result, repeatCount), id, result.status, result.foundAmt, result.senderName || null, result.senderPhone || null, result.timeStr, result.foundName]
     }).catch(() => {});
+
 }
 
 export async function handleScreenshotFlow() {

@@ -1,5 +1,4 @@
 // c:\Users\BT\Desktop\Venv\zOther\Ebirr_Chrome_Verifier\services\boa_service.js
-import { getDateParser } from '../utils/date_converter.js';
 
 export class BOABruteforce {
     constructor() {
@@ -46,8 +45,6 @@ export class BOABruteforce {
 
             for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
                 try {
-                    console.log(`[BOA Verifier] Verification attempt ${attempt}/${MAX_ATTEMPTS} for ${id}`);
-                    
                     // 1. Update URL (Force reload on retry)
                     await chrome.tabs.update(this.tabId, { url: targetUrl });
 
@@ -62,7 +59,7 @@ export class BOABruteforce {
                         func: detectionLogic
                     });
 
-                    const output = (result && result[0] && result[0].result) || { status: "ERROR", scannedText: "Script injection failed or returned null." };
+                    const output = (result && result[0] && result[0].result) || { status: "ERROR" };
 
                     if (output.status === "SUCCESS" && output.data) {
                         return { ...output.data, bank: 'BOA' };
@@ -76,7 +73,6 @@ export class BOABruteforce {
                     throw new Error(output.status);
 
                 } catch (e) {
-                    console.warn(`[BOA Verifier] Attempt ${attempt} failed:`, e.message);
                     lastError = e;
                     if (attempt < MAX_ATTEMPTS) await new Promise(r => setTimeout(r, 1000));
                 }
@@ -106,8 +102,6 @@ export class BOABruteforce {
                 // Construct ID: Prefix + Guess Digit + Suffix
                 const candidateId = `${prefix}${digit}${suffix}`;
                 const targetUrl = `${this.baseUrl}${candidateId}`;
-
-                console.log(`[BOA Verifier] Testing digit ${digit} (ID: ${candidateId})...`);
 
                 // 1. Update URL
                 await chrome.tabs.update(this.tabId, { url: targetUrl });
@@ -178,7 +172,7 @@ function detectionLogic() {
     return new Promise((resolve) => {
         try {
             if (!document || !document.body) {
-                resolve({ status: "FAILURE", scannedText: "Document body is null" });
+                resolve({ status: "FAILURE" });
                 return;
             }
 
@@ -193,7 +187,13 @@ function detectionLogic() {
             };
 
             const scrape = () => {
-                const data = {};
+                const data = {
+                    recipient: null,
+                    amount: null,
+                    date: null,
+                    senderName: null,
+                    senderPhone: null
+                };
                 // Direct DOM scraping inside the tab
                 const rows = document.querySelectorAll('#invoice table tbody tr');
                 rows.forEach(row => {
@@ -253,7 +253,7 @@ function detectionLogic() {
                 finish({ status: "TIMEOUT" });
             }, TIMEOUT_MS);
         } catch (e) {
-            resolve({ status: "ERROR", scannedText: "Injection Error: " + e.message });
+            resolve({ status: "ERROR" });
         }
     });
 }

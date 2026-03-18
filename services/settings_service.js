@@ -51,7 +51,14 @@ export const initSettings = async () => {
 };
 
 export function isValidIdFormat(id) {
-    if (!id || typeof id !== 'string' || !/^[a-zA-Z0-9]+$/.test(id)) {
+    if (!id || typeof id !== 'string') return false;
+
+    // Allow pipe (|) for composite BOA IDs (Partial|Suffix)
+    if (id.includes('|')) {
+        return /^[a-zA-Z0-9|]+$/.test(id);
+    }
+
+    if (!/^[a-zA-Z0-9]+$/.test(id)) {
         return false;
     }
     const banks = settingsCache.banks || DEFAULT_BANKS;

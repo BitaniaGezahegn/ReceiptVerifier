@@ -31,7 +31,7 @@
     "scopes": [
       "https://www.googleapis.com/auth/userinfo.email",
       "https://www.googleapis.com/auth/userinfo.profile",
-      "openid"
+      "openid" 
     ]
   },
   "content_security_policy": {

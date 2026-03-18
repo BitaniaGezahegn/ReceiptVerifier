@@ -109,9 +109,12 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
     - If the number does not match the specific *Length* AND *Prefix* defined in the specs, discard it and keep searching the image.
 
     <|special_boa_rule|>
-    **IF and ONLY IF** you find an Abyssinia Bank ID starting with "FT" that is **12 characters long** (missing the last 5 digits), look elsewhere in the image for the **"Source Account"** or "Sender Account".
-    - Extract the **last 4 digits** of that Source Account.
-    - Return the format: "FTxxxxxxxxx|1234" (The Partial ID, a pipe symbol, then the 4 source digits).
+    **IF** you find an Abyssinia Bank ID starting with "FT" that is **12 characters long** (missing the last 5 digits):
+    1. Search the image for **"Source Account"**, **"Sender Account"**, or **"Account No"**.
+    2. Extract the **last 4 visible digits** of that account number (ignore masking asterisks like '******1234' -> extract '1234').
+    3. Return the format: "PARTIAL_ID|SOURCE_SUFFIX" (e.g., "FT26076QG1MH|2424").
+    
+    **NOTE:** If the ID found is already 17 characters long, return it as is.
     </|special_boa_rule|>
     </|extraction_rules|>
 

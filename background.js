@@ -97,18 +97,3 @@ chrome.runtime.onMessage.addListener((request, sender) => {
 
 // 4. MESSAGE LISTENER
 chrome.runtime.onMessage.addListener(routeMessage);
-
-// 6. Expose Testing Helpers for Service Worker Console
-self.ebirrTestPendingAlert = (count = 5) => {
-    console.log(`🔔 Triggering Pending Alert Test (Count: ${count})...`);
-    sendTelegramNotification(`⚠️ *Pending Request Alert (TEST)*\n\nThere are *${count}* pending requests waiting for verification.`);
-};
-
-self.ebirrTestTelegram = () => sendTelegramNotification("🔔 *Test Notification*\n\nSystem is connected successfully!");
-
-self.testBOA = async (prefix, suffix) => {
-    const solver = new BOABruteforce();
-    console.log(`Testing BOA Bruteforce for ${prefix}[X]${suffix}...`);
-    const result = await solver.solve(prefix, suffix);
-    console.log("BOA Result:", result || "Not Found");
-};
