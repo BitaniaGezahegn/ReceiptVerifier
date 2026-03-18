@@ -68,6 +68,13 @@ export function showRandomReviewModal(html, mgmtTabId, rowId, extractedId, imgUr
       shadow.appendChild(modal);
   
       const input = shadow.getElementById('prompt-input');
+      // Force text type to ensure letters can be entered
+      input.setAttribute("type", "text");
+      // Auto-capitalize on input
+      input.addEventListener('input', () => {
+        input.value = input.value.toUpperCase();
+      });
+
       input.focus();
       const done = (value) => { host.remove(); resolve(value); };
   
@@ -222,6 +229,36 @@ export function showRandomReviewModal(html, mgmtTabId, rowId, extractedId, imgUr
   }
   
   export function scrapeBankData() {
+    // 1. Attempt to scrape BOA (Abyssinia) Receipt
+    const boaTable = document.querySelector('#invoice table');
+    if (boaTable) {
+        const data = {};
+        const rows = boaTable.querySelectorAll('tr');
+        rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length === 2) {
+                const key = cells[0].innerText.trim();
+                const value = cells[1].innerText.trim();
+                if (key.includes("Receiver's Name")) data.recipient = value;
+                else if (key.includes("Transferred amount")) data.amount = value;
+                else if (key.includes("Transaction Date")) data.date = value;
+                else if (key.includes("Source Account Name")) data.senderName = value;
+            }
+        });
+
+        if (data.recipient) {
+            return {
+                recipient: data.recipient,
+                amount: data.amount,
+                date: data.date,
+                senderName: data.senderName,
+                senderPhone: "-", 
+                bank: "BOA" // Important for date parsing logic
+            };
+        }
+    }
+
+    // 2. Attempt to scrape Ebirr/Standard Receipt
     const xpaths = {
       recipient: '//*[@id="invoice"]/table[1]/tbody/tr[4]/td/table/tbody/tr/td[2]/table/tbody/tr[2]/td',
       reason: '//*[@id="invoice"]/table[1]/tbody/tr[6]/td/table/tbody/tr[3]/td[2]',
@@ -281,6 +318,13 @@ export function showRandomReviewModal(html, mgmtTabId, rowId, extractedId, imgUr
         modal.innerHTML = html;
         shadow.appendChild(modal);
         const input = shadow.getElementById('prompt-input');
+        // Force text type to ensure letters can be entered
+        input.setAttribute("type", "text");
+        // Auto-capitalize on input
+        input.addEventListener('input', () => {
+          input.value = input.value.toUpperCase();
+        });
+
         input.focus();
         const done = (value) => { host.remove(); resolve(value); };
         shadow.getElementById('btn-ok').onclick = () => done(input.value);
@@ -299,13 +343,13 @@ export function showRandomReviewModal(html, mgmtTabId, rowId, extractedId, imgUr
         } else {
           const manId = await showCustomPrompt(manualHtml);
           if (manId) {
-            chrome.runtime.sendMessage({ action: "manualIdEntry", id: manId.replace(/\D/g, ''), amount: amt });
+            chrome.runtime.sendMessage({ action: "manualIdEntry", id: manId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(), amount: amt });
           }
         }
       } else if (mode === 'manual') {
         const manId = await showCustomPrompt(manualHtml);
         if (manId) {
-          chrome.runtime.sendMessage({ action: "manualIdEntry", id: manId.replace(/\D/g, ''), amount: amt });
+          chrome.runtime.sendMessage({ action: "manualIdEntry", id: manId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(), amount: amt });
         }
       }
     }

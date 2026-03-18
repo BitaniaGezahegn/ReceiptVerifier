@@ -68,7 +68,13 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
     }
   
     // Generate Dynamic Prompt
-    const specs = banks.map(b => `- A ${b.length}-digit number starting with "${b.prefixes.join('" or "')}".`).join('\n  ');
+    const specs = banks.map(b => {
+        const lenStr = Array.isArray(b.length) ? b.length.join(" or ") : b.length;
+        if (b.name.includes("BOA") || b.prefixes.some(p => p === "FT")) {
+            return `- A ${lenStr}-character ALPHANUMERIC ID starting with "FT".`;
+        }
+        return `- A ${lenStr}-digit number starting with "${b.prefixes.join('" or "')}".`;
+    }).join('\n  ');
 
     const dynamicPrompt = `
     You are a specialized Vision OCR system for Ethiopian financial transaction verification.
@@ -86,6 +92,7 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
     - Somali: "Tix", "Tixda"
     - Amharic: "የክፍያ ቁጥር", "መለያ ቁጥር"
     - Short/SMS: "Transfer-Id:", "Ref:"
+    - **Abyssinia (BOA):** Look for "Transaction Reference" or "Ref". ID starts with "FT".
 
     2. **Spatial Logic (Vertical Stack Fix):**
     - The ID is often to the right of the label OR on the lines below it.
@@ -98,12 +105,18 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
     - **Amounts:** REJECT numbers following "ETB" or containing decimals (e.g., 100.00).
 
     4. **Final Validation:**
-    - Compare the number you found against the <|id_specs|> list.
+    - Compare the ID found against the <|id_specs|> list.
     - If the number does not match the specific *Length* AND *Prefix* defined in the specs, discard it and keep searching the image.
+
+    <|special_boa_rule|>
+    **IF and ONLY IF** you find an Abyssinia Bank ID starting with "FT" that is **12 characters long** (missing the last 5 digits), look elsewhere in the image for the **"Source Account"** or "Sender Account".
+    - Extract the **last 4 digits** of that Source Account.
+    - Return the format: "FTxxxxxxxxx|1234" (The Partial ID, a pipe symbol, then the 4 source digits).
+    </|special_boa_rule|>
     </|extraction_rules|>
 
     <|output_format|>
-    - If a valid ID is found that matches the specs: Return ONLY the digits. (Example: 801457901704 or 1972262089).
+    - Return ONLY the ID (or ID|Suffix).
     - If multiple valid candidates exist, prefer the one closest to a recognized label.
     - If NO valid ID matches the specs exactly: Return "ERROR".
     - Do NOT write "Here is the ID". Do NOT include punctuation.
@@ -216,7 +229,12 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
                 return "ERROR";
             }
             
-            return content.replace(/\D/g, '');
+            // Cleanup: Allow alphanumeric and pipe (|) for BOA, otherwise strictly digits
+            if (content.includes("FT") || content.includes("|")) {
+                return content.replace(/[^a-zA-Z0-9|]/g, '');
+            }
+
+            return content.replace(/\D/g, ''); // Default behavior
         } catch (e) { 
             console.warn(`Key index ${i} failed:`, e);
             if (attempt === validKeys.length - 1) throw e; 

@@ -6,16 +6,17 @@ import { getTransaction, logTransactionResult } from '../../services/storage_ser
 import { verifyTransactionData } from '../../services/verification.js';
 import { setupOffscreenDocument } from '../../services/offscreen_service.js';
 import { getRawBase64, getTimeAgo } from '../../utils/helpers.js';
-import * as UI from '../../ui/injectors.js';
+import * as UI from '../../injectors.js';
 import { BANK_XPATHS } from '../../utils/constants.js';
 import * as TPL from '../../ui/templates.js';
+import { BOABruteforce } from '../../services/boa_service.js';
 
 export async function handleStartAI(amount, imgSrc, tabId) {
   chrome.scripting.executeScript({ target: { tabId: tabId }, func: UI.runShowStatus, args: [TPL.getStatusHtml(), amount] }).catch(() => {});
   chrome.scripting.executeScript({
     target: { tabId: tabId },
     func: UI.grabImageData,
-    args: [imgSrc]
+    args: [imgSrc || null]
   }, async (results) => {
     const result = results?.[0]?.result;
     let processedBase64 = null, rawBase64 = null, rawMimeType = 'image/jpeg';
@@ -94,10 +95,10 @@ export async function openAndVerifyFullData(id, originalTabId, expectedAmount, e
   const historyItem = existingTx || await getTransaction(id);
   const repeatCount = historyItem ? (historyItem.repeatCount || 0) : 0;
   
-  const matchedBank = banks.find(b => 
-    id.length === parseInt(b.length) && 
-    b.prefixes.some(prefix => id.startsWith(prefix))
-  );
+  const matchedBank = banks.find(b => {
+    const lengths = Array.isArray(b.length) ? b.length.map(l => parseInt(l)) : [parseInt(b.length)];
+    return lengths.includes(id.length) && b.prefixes.some(prefix => id.startsWith(prefix));
+  });
 
   if (!matchedBank) {
     chrome.scripting.executeScript({
@@ -112,6 +113,30 @@ export async function openAndVerifyFullData(id, originalTabId, expectedAmount, e
   const maxHours = settingsCache.maxReceiptAge || 0.5;
   const useHeadless = settingsCache.headlessMode !== false;
 
+  // Special handler for BOA which requires JS execution
+  if (matchedBank.handler === 'BOA') {
+      chrome.scripting.executeScript({
+          target: { tabId: originalTabId },
+          func: () => {
+              const div = document.createElement('div');
+              div.id = 'ebirr-loading-overlay';
+              div.style = "position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#334155; color:white; padding:10px 20px; border-radius:20px; z-index:999999; font-family:sans-serif; font-size:14px; box-shadow:0 4px 15px rgba(0,0,0,0.3); display:flex; align-items:center; gap:10px;";
+              div.innerHTML = '<span>Verifying with Bank (BOA)...</span>';
+              document.body.appendChild(div);
+          }
+      }).catch(() => {});
+
+      const verifier = new BOABruteforce(); // Can reuse this class for its tab management
+      const data = await verifier.verifyAndParse(id);
+      
+      chrome.scripting.executeScript({ target: { tabId: originalTabId }, func: () => document.getElementById('ebirr-loading-overlay')?.remove() }).catch(() => {});
+      
+      // Continue with the standard data handling logic
+      await handleVerificationData(id, data, originalTabId, expectedAmount, historyItem, repeatCount);
+      return;
+  }
+
+  // Standard flow for other banks
   if (useHeadless) {
     await setupOffscreenDocument();
     chrome.scripting.executeScript({
@@ -126,50 +151,7 @@ export async function openAndVerifyFullData(id, originalTabId, expectedAmount, e
     }).catch(() => {});
 
     chrome.runtime.sendMessage({ action: 'parseReceipt', url: baseUrl + id }, async (data) => {
-      chrome.scripting.executeScript({ target: { tabId: originalTabId }, func: () => document.getElementById('ebirr-loading-overlay')?.remove() }).catch(() => {});
-
-      if (chrome.runtime.lastError || !data || data.error) {
-        chrome.scripting.executeScript({
-            target: { tabId: originalTabId },
-            func: (e) => alert("Headless Fetch Failed: " + e),
-            args: [data?.error || "Connection Error"]
-        }).catch(() => {});
-        return;
-      }
-
-      if (!data.recipient) {
-        const result = {
-            status: "Invalid ID",
-            color: "#ef4444",
-            statusText: "❌ INVALID ID (BANK 404)",
-            foundAmt: "0",
-            timeStr: "N/A",
-            foundName: "N/A",
-            senderName: "-",
-            senderPhone: "-",
-            nameOk: false, amtOk: false, timeOk: false,
-            repeatCount: repeatCount
-        };
-        await logTransactionResult(id, { ...result, foundAmt: expectedAmount }, historyItem);
-
-        chrome.scripting.executeScript({
-          target: { tabId: originalTabId },
-          func: UI.showResultOverlay,
-          args: [TPL.getResultOverlayHtml(result, repeatCount), id, result.status, result.foundAmt, result.senderName, result.senderPhone, result.timeStr, result.foundName]
-        }).catch(() => {});
-        return;
-      }
-      
-      const result = verifyTransactionData(data, expectedAmount, settingsCache.targetName, maxHours);
-      if (result.status.startsWith("AA")) result.color = "#3b82f6";
-      
-      await logTransactionResult(id, result, historyItem);
-
-      chrome.scripting.executeScript({
-        target: { tabId: originalTabId },
-        func: UI.showResultOverlay,
-        args: [TPL.getResultOverlayHtml(result, repeatCount), id, result.status, result.foundAmt, result.senderName, result.senderPhone, result.timeStr, result.foundName]
-      }).catch(() => {});
+      await handleVerificationData(id, data, originalTabId, expectedAmount, historyItem, repeatCount);
     });
   } else {
     // Legacy Mode: Open in new tab
@@ -194,22 +176,63 @@ export async function openAndVerifyFullData(id, originalTabId, expectedAmount, e
                         return;
                     }
 
-                    const result = verifyTransactionData(data, expectedAmount, settingsCache.targetName, maxHours);
-                    if (result.status.startsWith("AA")) result.color = "#3b82f6";
-
-                    await logTransactionResult(id, result, historyItem);
-
-                    chrome.scripting.executeScript({
-                        target: { tabId: tab.id },
-                        func: UI.showResultOverlay,
-                        args: [TPL.getResultOverlayHtml(result, repeatCount), id, result.status, result.foundAmt, result.senderName, result.senderPhone, result.timeStr, result.foundName]
-                    });
+                    await handleVerificationData(id, data, tab.id, expectedAmount, historyItem, repeatCount);
                 });
             }
         };
         chrome.tabs.onUpdated.addListener(listener);
     });
   }
+}
+
+/**
+ * Common logic to process data returned from a bank check (headless or otherwise).
+ */
+async function handleVerificationData(id, data, tabId, expectedAmount, historyItem, repeatCount) {
+    const maxHours = settingsCache.maxReceiptAge || 0.5;
+
+    if (chrome.runtime.lastError || !data || data.error) {
+        chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: (e) => alert("Verification Fetch Failed: " + e),
+            args: [data?.error || chrome.runtime.lastError?.message || "Connection Error"]
+        }).catch(() => {});
+        return;
+    }
+
+    if (!data.recipient) {
+        const result = {
+            status: "Invalid ID",
+            color: "#ef4444",
+            statusText: "❌ INVALID ID (BANK 404)",
+            foundAmt: "0",
+            timeStr: "N/A",
+            foundName: "N/A",
+            senderName: "-",
+            senderPhone: "-",
+            nameOk: false, amtOk: false, timeOk: false,
+            repeatCount: repeatCount
+        };
+        await logTransactionResult(id, { ...result, foundAmt: expectedAmount }, historyItem);
+
+        chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          func: UI.showResultOverlay,
+          args: [TPL.getResultOverlayHtml(result, repeatCount), id, result.status, result.foundAmt, result.senderName, result.senderPhone, result.timeStr, result.foundName]
+        }).catch(() => {});
+        return;
+    }
+    
+    const result = verifyTransactionData(data, expectedAmount, settingsCache.targetName, maxHours);
+    if (result.status.startsWith("AA")) result.color = "#3b82f6";
+    
+    await logTransactionResult(id, result, historyItem);
+
+    chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      func: UI.showResultOverlay,
+      args: [TPL.getResultOverlayHtml(result, repeatCount), id, result.status, result.foundAmt, result.senderName, result.senderPhone, result.timeStr, result.foundName]
+    }).catch(() => {});
 }
 
 export async function handleScreenshotFlow() {

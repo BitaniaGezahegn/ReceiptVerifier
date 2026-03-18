@@ -51,12 +51,12 @@ export const initSettings = async () => {
 };
 
 export function isValidIdFormat(id) {
-    if (!id || typeof id !== 'string' || !/^\d+$/.test(id)) {
+    if (!id || typeof id !== 'string' || !/^[a-zA-Z0-9]+$/.test(id)) {
         return false;
     }
     const banks = settingsCache.banks || DEFAULT_BANKS;
     const matchedBank = banks.find(b => 
-      id.length === parseInt(b.length) && 
+      (Array.isArray(b.length) ? b.length.map(l => parseInt(l)).includes(id.length) : id.length === parseInt(b.length)) && 
       b.prefixes.some(prefix => id.startsWith(prefix))
     );
     return !!matchedBank;

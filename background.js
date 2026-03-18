@@ -3,7 +3,7 @@ import { DEFAULT_API_KEY, DEFAULT_BANKS } from './config.js';
 import { initSettings, settingsCache } from './services/settings_service.js';
 import { routeMessage } from './controllers/background/message_router.js';
 import { handleStartAI, handleScreenshotFlow } from './controllers/background/context_menu_controller.js';
-import * as UI from './ui/injectors.js';
+import * as UI from './injectors.js';
 import * as TPL from './ui/templates.js';
 import './services/auth_service.js'; // Initialize Auth
 import { sendTelegramNotification } from './services/notification_service.js';
@@ -16,9 +16,9 @@ chrome.runtime.onInstalled.addListener(async () => {
   if (!data.apiKeys || data.apiKeys.length === 0) {
       await chrome.storage.local.set({ apiKeys: [DEFAULT_API_KEY], activeKeyIndex: 0 });
   }
-  if (!data.banks || data.banks.length === 0) {
-      await chrome.storage.local.set({ banks: DEFAULT_BANKS });
-  }
+  // Always update banks on reload to ensure new handlers (like BOA) are applied immediately
+  await chrome.storage.local.set({ banks: DEFAULT_BANKS });
+  
   await initSettings();
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({ id: "verifyMain", title: "✅ Verify Transaction", contexts: ["image", "link", "frame", "page"] });
@@ -61,20 +61,20 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
     switch (aiScanBehavior) {
       case 'always_ai':
-        handleStartAI(amount, info.srcUrl, tab.id);
+        handleStartAI(amount, info.srcUrl || null, tab.id);
         break;
       case 'ask':
         chrome.scripting.executeScript({
           target: { tabId: tab.id },
           func: UI.modalInjection,
-          args: [amount, info.srcUrl, 'ask', TPL.getCustomConfirmHtml("Use AI Scan?", "Select an option to proceed.", "Use AI", "Enter Manually"), TPL.getCustomPromptHtml("Manual Transaction ID", "Please enter the transaction ID below.")]
+          args: [amount, info.srcUrl || null, 'ask', TPL.getCustomConfirmHtml("Use AI Scan?", "Select an option to proceed.", "Use AI", "Enter Manually"), TPL.getCustomPromptHtml("Manual Transaction ID", "Please enter the transaction ID below.")]
         });
         break;
       case 'always_manual':
         chrome.scripting.executeScript({
           target: { tabId: tab.id },
           func: UI.modalInjection,
-          args: [amount, info.srcUrl, 'manual', null, TPL.getCustomPromptHtml("Manual Transaction ID", "Please enter the transaction ID below.")]
+          args: [amount, info.srcUrl || null, 'manual', null, TPL.getCustomPromptHtml("Manual Transaction ID", "Please enter the transaction ID below.")]
         });
         break;
     }

@@ -1,3 +1,5 @@
+import { getDateParser } from "../utils/date_converter.js";
+
 export function verifyTransactionData(data, expectedAmt, targetName, maxHours) {
     let foundName = data.recipient || "";
     
@@ -28,17 +30,18 @@ export function verifyTransactionData(data, expectedAmt, targetName, maxHours) {
     let timeStr = "N/A";
     let timeOk = false;
     let bankDate = data.date || null;
-    
-    if (data.date) {
-        const p = data.date.match(/(\d{4})-(\d{2})-(\d{2})\s(\d{2}):(\d{2}):(\d{2})\s(\+\d{4})/);
-        if (p) {
-          const transDate = new Date(`${p[1]}-${p[2]}-${p[3]}T${p[4]}:${p[5]}:${p[6]}${p[7].slice(0,3)}:${p[7].slice(3)}`);
-          const diffMs = Date.now() - transDate.getTime();
-          const diffMins = Math.floor(diffMs / 60000);
-          const h = Math.floor(diffMins / 60);
-          const m = diffMins % 60;
-          timeStr = h > 0 ? `${h} hrs, ${m} min ago` : `${m} min ago`;
-          timeOk = diffMs > 0 && diffMs <= maxHours * 3600000;
+
+    if (bankDate) {
+        const parser = getDateParser(data.bank);
+        let transDate = parser(bankDate);
+
+        if (transDate) {
+            const diffMs = Date.now() - transDate.getTime();
+            const diffMins = Math.floor(diffMs / 60000);
+            const h = Math.floor(diffMins / 60);
+            const m = diffMins % 60;
+            timeStr = h > 0 ? `${h} hrs, ${m} min ago` : `${m} min ago`;
+            timeOk = diffMs > 0 && diffMs <= maxHours * 3600000;
         }
     }
   

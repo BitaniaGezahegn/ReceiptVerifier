@@ -5,7 +5,7 @@ import { handlePdfCapture } from '../../services/pdf_service.js';
 import { callAIVisionWithRetry } from '../../services/ai_service.js';
 import { isValidIdFormat } from '../../services/settings_service.js';
 import { setupOffscreenDocument } from '../../services/offscreen_service.js';
-import * as UI from '../../ui/injectors.js';
+import * as UI from '../../injectors.js';
 import * as TPL from '../../ui/templates.js';
 import { sendTelegramNotification } from '../../services/notification_service.js';
 
@@ -69,7 +69,7 @@ export function routeMessage(request, sender, sendResponse) {
         args: [TPL.getCustomPromptHtml("Manual Transaction ID", "Please enter the transaction ID below.")]
       }, (results) => {
         const manId = results?.[0]?.result;
-        if (manId) handleManualId(manId.replace(/\D/g, ''), request.amount, sender.tab.id);
+        if (manId) handleManualId(manId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(), request.amount, sender.tab.id);
       });
       break;
 

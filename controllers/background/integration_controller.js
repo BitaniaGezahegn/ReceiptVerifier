@@ -8,6 +8,7 @@ import { setupOffscreenDocument } from '../../services/offscreen_service.js';
 import { getMimeTypeFromDataUrl, getTimeAgo, isRetryableStatus, parseBankDate } from '../../utils/helpers.js';
 import { auth } from '../../services/firebase_config.js';
 import { reportActivity, reportOutcome } from '../../services/watchdog_service.js';
+import { BOABruteforce } from '../../services/boa_service.js';
 
 /**
  * Determines if a recipient should be skipped based on settings.
@@ -179,7 +180,30 @@ export async function handleIntegrationVerify(request, tabId) {
         return;
     }
 
-    if (!extractedId || extractedId === "ERROR" || extractedId.trim() === "" || !/^\d+$/.test(extractedId)) {
+    // SPECIAL HANDLING FOR BOA PARTIAL IDS
+    if (extractedId && extractedId.includes('|')) {
+        const parts = extractedId.split('|');
+        if (parts.length === 2) {
+            const partialId = parts[0];
+            const suffix = parts[1];
+            
+            updateStatus(`BOA Partial ID Detected. Solving...`);
+            const boaSolver = new BOABruteforce();
+            // The partial ID is the Prefix. We need to guess the digit BEFORE the suffix.
+            const solvedId = await boaSolver.solve(partialId, suffix);
+            
+            if (solvedId) {
+                extractedId = solvedId;
+                updateStatus(`Solved: ${extractedId}`);
+            } else {
+                extractedId = "ERROR"; // Failed to solve
+                updateStatus("Failed to solve BOA ID.");
+            }
+        }
+    }
+
+    // Updated Regex to allow Alphanumeric for BOA (FT...)
+    if (!extractedId || extractedId === "ERROR" || extractedId.trim() === "" || !/^[A-Za-z0-9]+$/.test(extractedId)) {
       const randomKey = `RANDOM_${Date.now()}`;
       const verificationResult = {
           status: "Random",
@@ -210,8 +234,11 @@ export async function handleIntegrationVerify(request, tabId) {
 
     updateStatus("Validating ID...");
     const banks = settingsCache.banks || DEFAULT_BANKS;
-    
-    const matchedBank = banks.find(b => extractedId.length === parseInt(b.length) && b.prefixes.some(prefix => extractedId.startsWith(prefix)));
+
+    const matchedBank = banks.find(b => {
+        const lengths = Array.isArray(b.length) ? b.length.map(l => parseInt(l)) : [parseInt(b.length)];
+        return lengths.includes(extractedId.length) && b.prefixes.some(prefix => extractedId.startsWith(prefix));
+    });
     
     if (!matchedBank) {
       updateStatus("Invalid ID..."); // Only show if it actually fails
@@ -551,7 +578,10 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                 processedIds.add(finalId);
 
                 // Match Bank
-                const matchedBank = banks.find(b => finalId.length === parseInt(b.length) && b.prefixes.some(prefix => finalId.startsWith(prefix)));
+                const matchedBank = banks.find(b => {
+                    const lengths = Array.isArray(b.length) ? b.length.map(l => parseInt(l)) : [parseInt(b.length)];
+                    return lengths.includes(finalId.length) && b.prefixes.some(prefix => finalId.startsWith(prefix));
+                });
                 if (!matchedBank) {
                     errors.push(`ID ${finalId}: No Matching Bank`);
                     // Treat invalid format as skip, without logging

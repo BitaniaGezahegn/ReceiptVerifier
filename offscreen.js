@@ -1,4 +1,5 @@
 import { BANK_XPATHS } from './utils/constants.js';
+import { parseBOAReceipt } from './services/dom_parsers.js';
 
 console.log("[Offscreen] Script loaded.");
 
@@ -44,14 +45,18 @@ async function parseReceipt(url) {
     const response = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
     const text = await response.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(text, 'text/html');
+
+    if (url.includes("bankofabyssinia.com")) {
+        const boaData = parseBOAReceipt(doc);
+        return { ...boaData, bank: 'BOA' };
+    }
     
     // Explicitly check for the 404 page content
     if (text.includes('Not Found Page')) {
         return { recipient: null };
     }
-
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(text, 'text/html');
 
     const getText = (xpath) => {
       const result = doc.evaluate(xpath, doc, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);

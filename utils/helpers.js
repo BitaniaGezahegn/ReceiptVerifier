@@ -12,6 +12,7 @@ export function getTimeAgo(timestamp, dateStr) {
     if (!ts || isNaN(ts)) return "N/A";
     
     const diffMs = Date.now() - ts;
+    // Gracefully handle future dates (e.g. server clock skew)
     if (diffMs < 0) return "Just now";
     
     const diffMins = Math.floor(diffMs / 60000);
@@ -65,15 +66,41 @@ export function isRetryableStatus(status) {
 export function parseBankDate(dateStr) {
     if (!dateStr || typeof dateStr !== 'string') return null;
 
-    const cleanedDateStr = dateStr.trim();
+    let cleanedDateStr = dateStr.trim();
 
     try {
-        // Attempt to parse with new Date(), which is good for ISO-like formats
+        // Attempt 1: Parse with new Date(), which is good for ISO-like formats
         // e.g., "2026-03-12 22:35:42 +0300 EAT"
-        const isoDate = new Date(cleanedDateStr);
+        let isoDate = new Date(cleanedDateStr);
         if (!isNaN(isoDate.getTime()) && isoDate.getFullYear() > 1990) {
             console.log(`[Ebirr Verifier] Parsed date as ISO-like: "${cleanedDateStr}" -> ${isoDate.toISOString()}`);
             return isoDate.getTime();
+        }
+
+        // Attempt 2: Remove trailing timezone abbreviation (e.g. " EAT") which often confuses parsers
+        // Format: "2026-03-17 08:15:06 +0300 EAT" -> "2026-03-17 08:15:06 +0300"
+        const noTzAbbrev = cleanedDateStr.replace(/\s+[A-Z]{3,}$/, '').trim();
+        if (noTzAbbrev !== cleanedDateStr) {
+             isoDate = new Date(noTzAbbrev);
+             if (!isNaN(isoDate.getTime()) && isoDate.getFullYear() > 1990) {
+                console.log(`[Ebirr Verifier] Parsed date (removed TZ abbrev): "${noTzAbbrev}"`);
+                return isoDate.getTime();
+            }
+        }
+
+        // Attempt 3: Explicit regex for YYYY-MM-DD HH:mm:ss (+ZZZZ)
+        const ymdMatch = cleanedDateStr.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:\s+(\d{1,2}):(\d{1,2}):(\d{1,2}))?/);
+        if (ymdMatch) {
+             const [_, y, m, d, hh, mm, ss] = ymdMatch;
+             const offsetMatch = cleanedDateStr.match(/([+\-]\d{4})/);
+             const offset = offsetMatch ? offsetMatch[1] : ''; // e.g. +0300
+             
+             // Construct standard ISO: YYYY-MM-DDTHH:mm:ss+ZZZZ
+             const constructedIso = `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}T${(hh||'00').padStart(2,'0')}:${(mm||'00').padStart(2,'0')}:${(ss||'00').padStart(2,'0')}${offset}`;
+             const dDate = new Date(constructedIso);
+             if (!isNaN(dDate.getTime())) {
+                 return dDate.getTime();
+             }
         }
 
         // Fallback for ambiguous formats like DD/MM/YYYY or DD-MM-YYYY

@@ -1,4 +1,7 @@
 // c:\Users\BT\Desktop\Venv\zOther\Ebirr_Chrome_Verifier\services\boa_service.js
+import { getDateParser } from '../utils/date_converter.js';
+import { parseBOAReceipt } from './dom_parsers.js';
+
 export class BOABruteforce {
     constructor() {
         this.tabId = null;
@@ -30,10 +33,86 @@ export class BOABruteforce {
     }
 
     /**
+     * Verifies a single, complete BOA transaction ID.
+     * @param {string} id - The full transaction ID to verify.
+     * @returns {Promise<object|null>} The parsed receipt data, or null if invalid/timeout.
+     */
+    async verifyAndParse(id) {
+        const MAX_ATTEMPTS = 3;
+        let lastError = null;
+
+        try {
+            await this.init();
+            const targetUrl = `${this.baseUrl}${id}`;
+
+            for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+                try {
+                    console.log(`[BOA Verifier] Verification attempt ${attempt}/${MAX_ATTEMPTS} for ${id}`);
+                    
+                    // 1. Update URL (Force reload on retry)
+                    await chrome.tabs.update(this.tabId, { url: targetUrl });
+
+                    // 2. Wait for page load and React render
+                    await this._waitForTabLoad(this.tabId, targetUrl);
+                    
+                    // Small safety buffer for hydration
+                    await new Promise(r => setTimeout(r, 800));
+
+                    const result = await chrome.scripting.executeScript({
+                        target: { tabId: this.tabId },
+                        func: this._detectionLogic
+                    });
+
+                    const output = (result && result[0] && result[0].result) || { status: "ERROR" };
+
+                    // Fallback: If TIMEOUT but we got HTML, try to parse it anyway. 
+                    // The visual page might be ready even if our specific text markers weren't found instantly.
+                    if (output.status === "TIMEOUT" && output.html) {
+                        console.warn(`[BOA Verifier] Timeout waiting for markers. Attempting to parse captured HTML...`);
+                    }
+
+                    // Attempt parsing if we have HTML (SUCCESS or TIMEOUT)
+                    if (output.html) {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(output.html, 'text/html');
+                        const boaData = parseBOAReceipt(doc);
+                        
+                        if (!boaData.recipient && output.html) {
+                            console.warn("[BOA Verifier] Parsed HTML but found no recipient");
+                        }
+                        
+                        // Only return if we actually found data, otherwise throw/continue to retry
+                        if (boaData.recipient) return { ...boaData, bank: 'BOA' };
+                    }
+
+                    if (output.status === "FAILURE") {
+                        return { recipient: null }; 
+                    }
+
+                    // If ERROR or TIMEOUT, throw to trigger retry
+                    throw new Error(output.status);
+
+                } catch (e) {
+                    console.warn(`[BOA Verifier] Attempt ${attempt} failed:`, e.message);
+                    lastError = e;
+                    if (attempt < MAX_ATTEMPTS) await new Promise(r => setTimeout(r, 1000));
+                }
+            }
+
+            return { error: `Bank Verification Failed: ${lastError ? lastError.message : "Unknown Error"}` };
+        } catch (e) {
+            console.error("[BOA Verifier] verifyAndParse error:", e);
+            return { error: e.message || "Connection Failed" };
+        } finally {
+            await this.cleanup();
+        }
+    }
+
+    /**
      * Core Brute-force Logic.
      * Iterates 0-9, constructing candidates and checking against the bank portal.
-     * @param {string} prefix - Digits before the missing index.
-     * @param {string} suffix - Digits after the missing index.
+     * @param {string} prefix - The partial ID (e.g. FT26076QG1MH).
+     * @param {string} suffix - The last 4 digits of the Source Account (e.g. 2424).
      * @returns {Promise<string|null>} The full valid ID if found, otherwise null.
      */
     async solve(prefix, suffix) {
@@ -41,10 +120,11 @@ export class BOABruteforce {
             await this.init();
 
             for (let digit = 0; digit <= 9; digit++) {
-                const candidateId = `${prefix}`;
-                const targetUrl = `${this.baseUrl}`;
+                // Construct ID: Prefix + Guess Digit + Suffix
+                const candidateId = `${prefix}${digit}${suffix}`;
+                const targetUrl = `${this.baseUrl}${candidateId}`;
 
-                console.log(`[BOA Verifier] Testing digit  (ID: )...`);
+                console.log(`[BOA Verifier] Testing digit ${digit} (ID: ${candidateId})...`);
 
                 // 1. Update URL
                 await chrome.tabs.update(this.tabId, { url: targetUrl });
@@ -58,10 +138,14 @@ export class BOABruteforce {
                     func: this._detectionLogic
                 });
 
-                const status = result && result[0] ? result[0].result : "ERROR";
+                const output = (result && result[0] && result[0].result) || { status: "ERROR" };
 
-                if (status === "SUCCESS") {
-                    console.log(`[BOA Verifier] MATCH FOUND: `);
+                if (output.status === "SUCCESS") {
+                    // The brute-force just needs to find a valid page.
+                    // A quick check on the HTML to be sure.
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(output.html, 'text/html');
+                    if (doc.body.innerText.includes("Source Account"))
                     return candidateId;
                 }
                 
@@ -81,14 +165,24 @@ export class BOABruteforce {
      */
     _waitForTabLoad(tabId, expectedUrlPrefix) {
         return new Promise(resolve => {
-            const timeout = setTimeout(() => resolve(), 5000); // 5s fallback safety
+            let listener;
+            
+            const cleanup = () => {
+                if (listener) chrome.tabs.onUpdated.removeListener(listener);
+            };
 
-            const listener = (tid, changeInfo, tab) => {
+            const timeout = setTimeout(() => {
+                cleanup();
+                resolve();
+            }, 10000); // Increased to 10s for slower connections
+
+            listener = (tid, changeInfo, tab) => {
                 if (tid === tabId && changeInfo.status === 'complete') {
                     // Ensure we are not catching the 'complete' of the previous page
-                    if (!tab.url || tab.url.includes("bankofabyssinia.com")) {
-                        chrome.tabs.onUpdated.removeListener(listener);
+                    // And ignore about:blank which can trigger early
+                    if (tab.url && tab.url !== 'about:blank' && (!expectedUrlPrefix || tab.url.includes("bankofabyssinia.com"))) {
                         clearTimeout(timeout);
+                        cleanup();
                         resolve();
                     }
                 }
@@ -110,6 +204,9 @@ export class BOABruteforce {
             const finish = (result) => {
                 if (observer) observer.disconnect();
                 if (timer) clearTimeout(timer);
+                if (result) {
+                    result.html = document.body.innerHTML;
+                }
                 resolve(result);
             };
 
@@ -117,14 +214,14 @@ export class BOABruteforce {
                 const text = document.body.innerText || "";
                 
                 // SUCCESS MARKERS
-                if (text.includes("Source Account") || text.includes("Reference Number")) {
-                    finish("SUCCESS");
+                if (text.includes("Source Account") || text.includes("Reference Number") || text.includes("Receiver's Name") || text.includes("Transaction Type")) {
+                    finish({ status: "SUCCESS" });
                     return true;
                 }
                 
                 // FAILURE MARKERS
                 if (text.includes("Invalid") || text.includes("not found")) {
-                    finish("FAILURE");
+                    finish({ status: "FAILURE" });
                     return true;
                 }
                 
@@ -146,7 +243,7 @@ export class BOABruteforce {
 
             // 3. Promise-based Timeout
             timer = setTimeout(() => {
-                finish("TIMEOUT");
+                finish({ status: "TIMEOUT" });
             }, TIMEOUT_MS);
         });
     }

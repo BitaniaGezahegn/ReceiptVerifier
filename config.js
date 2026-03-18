@@ -6,6 +6,7 @@ export const DEFAULT_SKIPPED_NAMES = [];
 // Default banks configuration
 export const DEFAULT_BANKS = [
   { name: "Kaafi", length: 12, prefixes: ["801"], url: "https://transactioninfo.ebirr.com/kaafimf-Ebirr/receipt/" },
-  { name: "Coop", length: 10, prefixes: ["19"], url: "https://transactioninfo.ebirr.com/coopay-Ebirr/receipt/" },
-  { name: "Wegagen", length: 6, prefixes: ["34", "35", "36"], url: "https://transactioninfo.ebirr.com/Wegagen-Ebirr/receipt/" }
+  { name: "Coop", length: 10, prefixes: ["21"], url: "https://transactioninfo.ebirr.com/coopay-Ebirr/receipt/" },
+  { name: "Wegagen", length: 6, prefixes: ["50", "51", "52"], url: "https://transactioninfo.ebirr.com/Wegagen-Ebirr/receipt/" },
+  { name: "BOA", length: [17], prefixes: ["FT"], url: "https://cs.bankofabyssinia.com/slip/?trx=", handler: "BOA" }
 ];
