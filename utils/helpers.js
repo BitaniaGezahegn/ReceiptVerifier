@@ -121,6 +121,22 @@ export function parseBankDate(dateStr) {
             }
         }
 
+        // Attempt 4: "DD/MM/YY HH:mm" (Common in Ethiopian Banks, e.g. "17/03/26 13:31" -> 17th March 2026)
+        const slashMatch = cleanedDateStr.match(/^(\d{2})\/(\d{2})\/(\d{2})\s+(\d{1,2}):(\d{2})/);
+        if (slashMatch) {
+             const [, dd, mm, yy, hh, min] = slashMatch;
+             const d = parseInt(dd, 10);
+             const m = parseInt(mm, 10) - 1; // 0-indexed
+             const y = parseInt(yy, 10);
+             const fullYear = 2000 + y;
+
+             const date = new Date(fullYear, m, d, parseInt(hh, 10), parseInt(min, 10));
+             if (!isNaN(date.getTime())) {
+                 console.log(`[Ebirr Verifier] Parsed date as DD/MM/YY: "${cleanedDateStr}" -> ${date.toISOString()}`);
+                 return date.getTime();
+             }
+        }
+
         console.error(`[Ebirr Verifier] FAILED to parse date: "${cleanedDateStr}"`);
         return null;
     } catch (e) {

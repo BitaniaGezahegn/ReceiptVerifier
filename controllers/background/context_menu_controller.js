@@ -97,6 +97,10 @@ export async function openAndVerifyFullData(id, originalTabId, expectedAmount, e
   
   const matchedBank = banks.find(b => {
     const lengths = Array.isArray(b.length) ? b.length.map(l => parseInt(l)) : [parseInt(b.length)];
+    // Allow composite IDs (containing pipe) to bypass strict length check if they start with the prefix
+    if (id.includes('|')) {
+        return b.prefixes.some(prefix => id.startsWith(prefix));
+    }
     return lengths.includes(id.length) && b.prefixes.some(prefix => id.startsWith(prefix));
   });
 
@@ -131,9 +135,20 @@ export async function openAndVerifyFullData(id, originalTabId, expectedAmount, e
 
       if (id.includes('|')) {
           const [partialId, sourceAccountSuffix] = id.split('|');
-          if (partialId.startsWith('FT') && sourceAccountSuffix.length === 4) {
+          const combined = partialId + sourceAccountSuffix;
+
+          // Case 1: The AI split a valid 17-char ID into two parts (no guessing needed)
+          if (combined.length === 17 && partialId.startsWith('FT')) {
+              finalId = combined;
+              const dataVerifier = new BOABruteforce();
+              data = await dataVerifier.verifyAndParse(finalId);
+          } 
+          // Case 2: We need to guess the missing digit (Brute Force)
+          else if (partialId.startsWith('FT') && sourceAccountSuffix.length >= 4) {
               const solver = new BOABruteforce();
-              const solvedId = await solver.solve(partialId, sourceAccountSuffix);
+              // Use only the last 4 digits of suffix for the solver
+              const cleanSuffix = sourceAccountSuffix.slice(-4);
+              const solvedId = await solver.solve(partialId, cleanSuffix);
               if (solvedId) {
                   finalId = solvedId;
                   // Re-verify with the full ID to get all data, since solve() only returns the ID

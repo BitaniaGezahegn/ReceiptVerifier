@@ -186,18 +186,25 @@ export async function handleIntegrationVerify(request, tabId) {
         if (parts.length === 2) {
             const partialId = parts[0];
             const suffix = parts[1];
+            const combined = partialId + suffix;
             
-            updateStatus(`BOA Partial ID Detected. Solving...`);
-            const boaSolver = new BOABruteforce();
-            // The partial ID is the Prefix. We need to guess the digit BEFORE the suffix.
-            const solvedId = await boaSolver.solve(partialId, suffix);
-            
-            if (solvedId) {
-                extractedId = solvedId;
-                updateStatus(`Solved: ${extractedId}`);
+            if (combined.length === 17) {
+                 extractedId = combined;
+                 updateStatus(`Reconstructed ID: ${extractedId}`);
             } else {
-                extractedId = "ERROR"; // Failed to solve
-                updateStatus("Failed to solve BOA ID.");
+                updateStatus(`BOA Partial ID Detected. Solving...`);
+                const boaSolver = new BOABruteforce();
+                // Ensure we use the last 4 digits for solving
+                const cleanSuffix = suffix.slice(-4);
+                const solvedId = await boaSolver.solve(partialId, cleanSuffix);
+                
+                if (solvedId) {
+                    extractedId = solvedId;
+                    updateStatus(`Solved: ${extractedId}`);
+                } else {
+                    extractedId = "ERROR";
+                    updateStatus("Failed to solve BOA ID.");
+                }
             }
         }
     }
@@ -572,6 +579,27 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                 break;
             }
             
+            // SPECIAL HANDLING FOR BOA PARTIAL IDS (Multi-Mode)
+            if (finalId && finalId.includes('|')) {
+                const parts = finalId.split('|');
+                if (parts.length === 2) {
+                    const partialId = parts[0];
+                    const suffix = parts[1];
+                    
+                    updateStatus(`BOA Partial ID in Image ${i+1}. Solving...`);
+                    const boaSolver = new BOABruteforce();
+                    const solvedId = await boaSolver.solve(partialId, suffix);
+                    
+                    if (solvedId) {
+                        finalId = solvedId;
+                        updateStatus(`Solved Image ${i+1}: ${finalId}`);
+                    } else {
+                        finalId = "ERROR";
+                        errors.push(`Image ${i+1}: Failed to solve BOA ID`);
+                    }
+                }
+            }
+
             if (finalId && finalId !== "ERROR" && finalId.trim() !== "") {
                 // Deduplicate
                 if (processedIds.has(finalId)) continue;
