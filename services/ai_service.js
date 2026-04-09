@@ -73,6 +73,9 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
         if (b.name.includes("BOA") || b.prefixes.some(p => p === "FT")) {
             return `- A ${lenStr}-character ALPHANUMERIC ID starting with "FT".`;
         }
+        if (b.name.includes("Telebirr") || b.prefixes.some(p => p === "DD")) {
+            return `- A ${lenStr}-character ALPHANUMERIC ID starting with "DD".`;
+        }
         return `- A ${lenStr}-digit number starting with "${b.prefixes.join('" or "')}".`;
     }).join('\n  ');
 
@@ -92,6 +95,7 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
     - Somali: "Tix", "Tixda"
     - Amharic: "የክፍያ ቁጥር", "መለያ ቁጥር"
     - Short/SMS: "Transfer-Id:", "Ref:"
+    - **Telebirr:** Look for "Invoice No" or "የክፍያ ቁጥር". ID starts with "DD".
     - **Abyssinia (BOA):** Look for "Transaction Reference" or "Ref". ID starts with "FT".
 
     2. **Spatial Logic (Vertical Stack Fix):**
@@ -232,9 +236,12 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
                 return "ERROR";
             }
             
-            // Cleanup: Allow alphanumeric and pipe (|) for BOA, otherwise strictly digits
-            if (content.includes("FT") || content.includes("|")) {
-                return content.replace(/[^a-zA-Z0-9|]/g, '');
+            // Normalization: Remove whitespace and convert to upper for prefix checking
+            const normalized = content.replace(/\s/g, '').toUpperCase();
+
+            // Cleanup: Allow alphanumeric and pipe (|) for BOA/Telebirr, otherwise strictly digits
+            if (normalized.includes("FT") || normalized.includes("DD") || normalized.includes("|")) {
+                return normalized.replace(/[^A-Z0-9|]/g, '');
             }
 
             return content.replace(/\D/g, ''); // Default behavior

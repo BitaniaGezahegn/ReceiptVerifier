@@ -49,7 +49,12 @@ function createScreenshotButton() {
 
     button.addEventListener('click', (e) => {
         e.stopPropagation();
-        chrome.runtime.sendMessage({ action: 'initiateScreenshot' });
+        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+            chrome.runtime.sendMessage({ action: 'initiateScreenshot' });
+        } else {
+            console.warn("Ebirr Verifier: Extension context invalidated. Please refresh the page.");
+            button.remove();
+        }
     });
 }
 

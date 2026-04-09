@@ -36,3 +36,35 @@ export function parseBOAReceipt(doc) {
 
     return data.recipient ? data : { recipient: null };
 }
+
+/**
+ * Parses the HTML of a Telebirr receipt page.
+ * @param {Document} doc - The DOM document to parse.
+ */
+export function parseTelebirrReceipt(doc) {
+    const data = {};
+    const cells = Array.from(doc.querySelectorAll('td'));
+
+    // 1. Extract Recipient (Credited Party)
+    const recipLabel = cells.find(c => c.innerText.includes("Credited Party name"));
+    if (recipLabel && recipLabel.nextElementSibling) {
+        data.recipient = recipLabel.nextElementSibling.innerText.trim();
+    }
+
+    // 2. Extract Amount and Date from the Invoice Details table
+    // Look for the label then find the data row
+    const idLabel = cells.find(c => c.innerText.includes("Invoice No."));
+    if (idLabel) {
+        const headerRow = idLabel.closest('tr');
+        const dataRow = headerRow ? headerRow.nextElementSibling : null;
+        
+        if (dataRow) {
+            const values = dataRow.querySelectorAll('td');
+            if (values.length >= 3) {
+                data.date = values[1].innerText.trim();   // e.g. 07-04-2026 11:54:37
+                data.amount = values[2].innerText.trim(); // e.g. 5.00 Birr
+            }
+        }
+    }
+    return data.recipient ? data : { recipient: null };
+}

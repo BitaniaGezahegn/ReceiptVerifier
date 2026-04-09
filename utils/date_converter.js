@@ -35,6 +35,31 @@ function parseBOADate(boaDateString) {
 }
 
 /**
+ * Parses a Telebirr date string.
+ * Format: 'DD-MM-YYYY HH:mm:ss' (e.g., '07-04-2026 11:54:37')
+ */
+function parseTelebirrDate(dateStr) {
+    if (!dateStr) return null;
+    const cleanStr = dateStr.trim();
+    
+    const match = cleanStr.match(/(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
+    if (!match) return null;
+
+    const [, dd, mm, yyyy, hh, min, ss] = match;
+    try {
+        const date = new Date(Date.UTC(
+            parseInt(yyyy, 10), 
+            parseInt(mm, 10) - 1, 
+            parseInt(dd, 10), 
+            parseInt(hh, 10), 
+            parseInt(min, 10), 
+            parseInt(ss, 10)
+        ));
+        return isNaN(date.getTime()) ? null : date;
+    } catch (e) { return null; }
+}
+
+/**
  * Standard parser for default banks (Kaafi, Coop, Wegagen)
  * Format: YYYY-MM-DD HH:mm:ss +ZZZZ
  * @param {string} dateString 
@@ -57,6 +82,9 @@ function parseStandardDate(dateString) {
 export function getDateParser(bankName) {
     if (bankName === 'BOA') {
         return parseBOADate;
+    }
+    if (bankName === 'Telebirr') {
+        return parseTelebirrDate;
     }
     return parseStandardDate;
 }

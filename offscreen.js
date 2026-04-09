@@ -1,5 +1,5 @@
 import { BANK_XPATHS } from './utils/constants.js';
-import { parseBOAReceipt } from './services/dom_parsers.js';
+import { parseBOAReceipt, parseTelebirrReceipt } from './services/dom_parsers.js';
 
 console.log("[Offscreen] Script loaded.");
 
@@ -51,6 +51,11 @@ async function parseReceipt(url) {
     if (url.includes("bankofabyssinia.com")) {
         const boaData = parseBOAReceipt(doc);
         return { ...boaData, bank: 'BOA' };
+    }
+    
+    if (url.includes("ethiotelecom.et")) {
+        const teleData = parseTelebirrReceipt(doc);
+        return { ...teleData, bank: 'Telebirr' };
     }
     
     // Explicitly check for the 404 page content

@@ -90,7 +90,7 @@ async function scanAndInject() {
         
         // If there's no text content or it's not a numeric ID, skip this row.
         // This handles empty cells and cells with placeholder text like "N/A".
-        if (!txId || !/^\d+$/.test(txId)) {
+        if (!txId || !/^[A-Za-z0-9]+$/.test(txId)) {
             return;
         }
 

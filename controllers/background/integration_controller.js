@@ -855,7 +855,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
             statusText = `❌ ${errors[0]}`;
 
             // FALLBACK FIX: Extract ID from error string if failedTransaction was missed
-            const idMatch = errors[0].match(/^ID (\d+): (.*)$/);
+            const idMatch = errors[0].match(/^ID ([A-Za-z0-9|]+): (.*)$/);
             if (idMatch) {
                 extractedId = idMatch[1];
                 const errType = idMatch[2];
