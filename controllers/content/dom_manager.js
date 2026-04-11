@@ -369,6 +369,45 @@ export class DomManager {
         setTimeout(() => clearInterval(interval), 5000);
     }
 
+    injectQuickActions(modalElement = null) {
+        const modal = modalElement || document.querySelector(SELECTORS.modal);
+        if (!modal || modal.offsetParent === null) return;
+
+        const inputComment = modal.querySelector(SELECTORS.modalInputComment);
+        if (!inputComment || !inputComment.parentNode) return;
+
+        // Prevent duplicate injection
+        if (modal.querySelector('.ebirr-quick-actions')) return;
+
+        const actionContainer = document.createElement('div');
+        actionContainer.className = 'ebirr-quick-actions';
+        actionContainer.style.cssText = "display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; justify-content: flex-start;";
+
+        const actions = [
+            { label: 'Repeat', color: '#f59e0b' },
+            { label: 'Random', color: '#ef4444' },
+            { label: 'Wrong Recipient', color: '#dc2626' },
+            { label: 'Old Receipt', color: '#ff9800' }
+        ];
+
+        actions.forEach(act => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.innerText = act.label;
+            btn.style.cssText = `padding: 5px 12px; font-size: 11px; font-weight: 700; background: transparent; border: 1.5px dashed ${act.color}; color: ${act.color}; border-radius: 8px; cursor: pointer; transition: all 0.2s; outline: none;`;
+            
+            btn.onmouseenter = () => { btn.style.background = act.color; btn.style.color = 'white'; };
+            btn.onmouseleave = () => { btn.style.background = 'transparent'; btn.style.color = act.color; };
+            btn.onclick = (e) => {
+                e.preventDefault();
+                inputComment.value = act.label;
+                inputComment.dispatchEvent(new Event('input'));
+            };
+            actionContainer.appendChild(btn);
+        });
+        inputComment.after(actionContainer);
+    }
+
     fillModalData(modal, result, mode, imgUrl, transId, isBatch) {
         const inputAmount = modal.querySelector(SELECTORS.modalInputAmount);
         const inputComment = modal.querySelector(SELECTORS.modalInputComment);
@@ -388,6 +427,9 @@ export class DomManager {
                 inputComment.dispatchEvent(new Event('input'));
             }
         }
+
+        // Inject Quick Action Buttons
+        this.injectQuickActions(modal);
 
         // Auto-Submit
         const submitBtn = modal.querySelector(SELECTORS.modalBtnConfirm);

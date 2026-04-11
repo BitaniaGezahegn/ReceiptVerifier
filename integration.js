@@ -64,6 +64,7 @@ async function init() {
         });
         batchProcessor.restoreAllRows();
         batchProcessor.checkPendingAlert();
+        domManager.injectQuickActions();
     });
     observer.observe(document.body, { childList: true, subtree: true });
 
