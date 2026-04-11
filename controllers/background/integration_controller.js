@@ -5,72 +5,12 @@ import { callAIVisionWithRetry } from '../../services/ai_service.js';
 import { getTransaction, logTransactionResult } from '../../services/storage_service.js';
 import { verifyTransactionData } from '../../services/verification.js';
 import { setupOffscreenDocument } from '../../services/offscreen_service.js';
-import { getMimeTypeFromDataUrl, getTimeAgo, isRetryableStatus, parseBankDate } from '../../utils/helpers.js';
+import { getMimeTypeFromDataUrl, getTimeAgo } from '../../utils/helpers.js';
 import { auth } from '../../services/firebase_config.js';
-import { reportActivity, reportOutcome } from '../../services/watchdog_service.js';
-
-/**
- * Determines if a recipient should be skipped based on settings.
- * Logic:
- * 1. If name NOT in list -> Don't Skip.
- * 2. If name IN list -> Default to SKIP.
- * 3. EXCEPTION: If "Verify if older than Date" is set AND tx is older -> Verify.
- */
-function shouldSkipRecipient(recipientName, reason, dateStr, settings) {
-    if (settings.skipByNameEnabled === false) return false;
-    const skippedNames = settings.skippedNames || [];
-    
-    const recipientLower = (recipientName || "").toLowerCase();
-    const reasonLower = (reason || "").toLowerCase();
-
-    if (!skippedNames.some(name => {
-        const n = name.toLowerCase();
-        return recipientLower.includes(n) || reasonLower.includes(n);
-    })) {
-        return false;
-    }
-
-    console.log(`[Ebirr Verifier] Name matched skip list. Checking date for Tx: '${dateStr}'`);
-    const txTime = parseBankDate(dateStr);
-
-    // Check Date Threshold - "Verify if Older"
-    const skippedNameDate = settings.skippedNameDate; // YYYY-MM-DD
-    if (skippedNameDate) {
-        if (!txTime) {
-            console.error(`[Ebirr Verifier] Date unparseable. Verifying to be safe.`);
-            return false; // If date is unparseable, verify to be safe
-        }
-
-        const txDate = new Date(txTime);
-        // IMPORTANT: We must use UTC methods to compare against the YYYY-MM-DD string
-        // which has no timezone info.
-        const txYear = txDate.getUTCFullYear();
-        const txMonth = String(txDate.getUTCMonth() + 1).padStart(2, '0');
-        const txDay = String(txDate.getUTCDate()).padStart(2, '0');
-        const txDateString = `${txYear}-${txMonth}-${txDay}`;
-
-        console.log(`[Ebirr Verifier] Comparing Tx Date: ${txDateString} vs. Cutoff Date: ${skippedNameDate}`);
-
-        // If the transaction's date string is less than the cutoff date string,
-        // it is "older", so we should verify it (return false for skip).
-        if (txDateString < skippedNameDate) {
-            console.log(`[Ebirr Verifier] Result: Transaction is older. VERIFYING.`);
-            return false;
-        } else {
-            console.log(`[Ebirr Verifier] Result: Transaction is NOT older. SKIPPING.`);
-        }
-    } else {
-        console.log(`[Ebirr Verifier] Result: No date cutoff set. SKIPPING.`);
-    }
-
-    return true; // Default: Skip
-}
 
 export async function handleIntegrationVerify(request, tabId) {
   const { src, amount, rowId, dataUrl } = request;
   const updateStatus = (msg) => chrome.tabs.sendMessage(tabId, { action: "updateStatus", message: msg, rowId }).catch(() => {});
-  
-  reportActivity(); // Notify watchdog we are alive
   
   let extractedId = null;
 
@@ -107,7 +47,6 @@ export async function handleIntegrationVerify(request, tabId) {
                 extractedId: "PDF",
                 imgUrl: src
             }).catch(() => {});
-            reportOutcome(false); // PDF is considered a "failure" for automation flow if manual check needed
             return;
     } else {
         // IMAGE FLOW
@@ -153,7 +92,6 @@ export async function handleIntegrationVerify(request, tabId) {
             extractedId: "RATE_LIMIT",
             imgUrl: src
         }).catch(() => {});
-        reportOutcome(false);
         return;
     }
 
@@ -175,11 +113,10 @@ export async function handleIntegrationVerify(request, tabId) {
             extractedId: "SERVICE_ERROR",
             imgUrl: src
         }).catch(() => {});
-        reportOutcome(false);
         return;
     }
 
-    if (!extractedId || extractedId === "ERROR" || extractedId.trim() === "" || !/^\d+$/.test(extractedId)) {
+    if (!extractedId || extractedId === "ERROR" || extractedId.trim() === "" || !/^[A-Z0-9]+$/i.test(extractedId)) {
       const randomKey = `RANDOM_${Date.now()}`;
       const verificationResult = {
           status: "Random",
@@ -204,7 +141,6 @@ export async function handleIntegrationVerify(request, tabId) {
         extractedId: "ERROR",
         imgUrl: src
       }).catch(() => {});
-      reportOutcome(false);
       return;
     }
 
@@ -240,7 +176,6 @@ export async function handleIntegrationVerify(request, tabId) {
         extractedId,
         imgUrl: src
       }).catch(() => {});
-      reportOutcome(false);
       
       return;
     }
@@ -274,7 +209,7 @@ export async function handleIntegrationVerify(request, tabId) {
     }
 
     if (old) {
-        const isIncomplete = !old.senderName || !old.bankDate || isRetryableStatus(old.status);
+        const isIncomplete = !old.senderName || !old.bankDate;
         if (!isIncomplete) {
             // It's a complete repeat, do the repeat logic and return.
             old.repeatCount = (old.repeatCount || 0) + 1;
@@ -282,16 +217,6 @@ export async function handleIntegrationVerify(request, tabId) {
             
             let effectiveStatus = "Repeat";
             let statusText = "🔁 DUPLICATE / REPEAT";
-            let color = "#f59e0b";
-
-            // Check for Skipped Name override on Repeat (Wrong Recipient + < 24h + In Skip List)
-            const skippedNames = settingsCache.skippedNames || [];
-            const recipientLower = (old.recipientName || "").toLowerCase();
-            if ((old.status === "Wrong Recipient" || old.status === "Skipped Name") && skippedNames.some(name => recipientLower.includes(name.toLowerCase()))) {
-                 effectiveStatus = "Skipped Name";
-                 statusText = "🚫 SKIPPED (NAME)";
-                 color = "#9ca3af";
-            }
 
             const repeatResult = {
                 status: effectiveStatus,
@@ -306,7 +231,7 @@ export async function handleIntegrationVerify(request, tabId) {
                 data: {
                     status: effectiveStatus,
                     originalStatus: old.status,
-                    color: color,
+                    color: "#f59e0b",
                     statusText: statusText,
                     foundAmt: old.amount || "0",
                     timeStr: getTimeAgo(old.timestamp, old.dateVerified) || "N/A",
@@ -320,7 +245,6 @@ export async function handleIntegrationVerify(request, tabId) {
                 extractedId,
                 imgUrl: src
             }).catch(() => {});
-            reportOutcome(true); // Repeat is a successful system operation
             return;
         }
         // If incomplete, fall through to re-fetch.
@@ -350,7 +274,6 @@ export async function handleIntegrationVerify(request, tabId) {
           error: err.message,
           imgUrl: src
         }).catch(() => {});
-        reportOutcome(false);
         return;
     }
 
@@ -362,7 +285,6 @@ export async function handleIntegrationVerify(request, tabId) {
           error: data?.error || "Bank Fetch Failed",
           imgUrl: src
         }).catch(() => {});
-        reportOutcome(false);
         return;
     }
 
@@ -391,38 +313,6 @@ export async function handleIntegrationVerify(request, tabId) {
             extractedId: extractedId,
             imgUrl: src
           }).catch(() => {});
-          reportOutcome(false);
-          return;
-      }
-
-      // CHECK FOR SKIPPED NAMES (Recipient)
-      const shouldSkip = shouldSkipRecipient(data.recipient, data.reason, data.date, settingsCache);
-
-      if (shouldSkip) {
-          const result = {
-              status: "Skipped Name",
-              color: "#9ca3af", // Grey
-              statusText: "🚫 SKIPPED (NAME)",
-              foundAmt: amount,
-              timeStr: "N/A",
-              foundName: data.recipient,
-              senderName: data.senderName,
-              senderPhone: data.senderPhone,
-              repeatCount: 0,
-              id: extractedId,
-              processedBy: auth.currentUser ? auth.currentUser.email : "System"
-          };
-          await logTransactionResult(extractedId, result, old);
-
-          chrome.tabs.sendMessage(tabId, {
-            action: "integrationResult",
-            rowId: rowId,
-            success: true,
-            data: result,
-            extractedId: extractedId,
-            imgUrl: src
-          }).catch(() => {});
-          reportOutcome(true); // Treated as a handled outcome (not a system error)
           return;
       }
 
@@ -447,7 +337,6 @@ export async function handleIntegrationVerify(request, tabId) {
         extractedId: extractedId,
         imgUrl: src
       }).catch(() => {});
-      reportOutcome(true); // Success
 
   } catch (err) {
     chrome.tabs.sendMessage(tabId, { 
@@ -457,14 +346,11 @@ export async function handleIntegrationVerify(request, tabId) {
       error: err.message,
       imgUrl: src
     }).catch(() => {});
-    reportOutcome(false);
   }
 }
 
 export async function handleMultiIntegrationVerify(request, tabId) {
     const { images, amount, rowId, primaryUrl } = request;
-    reportActivity(); // Notify watchdog
-
     const updateStatus = (msg) => chrome.tabs.sendMessage(tabId, { action: "updateStatus", message: msg, rowId }).catch(() => {});
 
     if (images.length > 1) updateStatus(`Processing ${images.length} Image(s)...`);
@@ -587,34 +473,11 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                 }
 
                 if (old) {
-                    const isIncomplete = !old.senderName || !old.bankDate || isRetryableStatus(old.status);
+                    const isIncomplete = !old.senderName || !old.bankDate;
                     if (!isIncomplete) {
                         // It's a complete repeat. Log and continue.
                         old.repeatCount = (old.repeatCount || 0) + 1;
                         old.lastRepeat = Date.now();
-
-                        // Check for Skipped Name override on Repeat
-                        const skippedNames = settingsCache.skippedNames || [];
-                        const recipientLower = (old.recipientName || "").toLowerCase();
-                        if ((old.status === "Wrong Recipient" || old.status === "Skipped Name") && skippedNames.some(name => recipientLower.includes(name.toLowerCase()))) {
-                             errors.push(`ID ${finalId}: Skipped (Name)`);
-                             if (!failedTransaction) {
-                                 failedTransaction = {
-                                     amount: old.amount,
-                                     timeStr: "N/A",
-                                     recipientName: old.recipientName,
-                                     senderName: old.senderName,
-                                     senderPhone: old.senderPhone,
-                                     status: "Skipped Name",
-                                     statusText: "🚫 SKIPPED (NAME)",
-                                     id: finalId,
-                                     existingTx: old,
-                                     bankDate: old.bankDate
-                                 };
-                             }
-                             continue;
-                        }
-
                         await logTransactionResult(finalId, { status: "Repeat", foundAmt: old.amount }, old);
                         errors.push(`ID : Duplicate / Repeat`);
                         maxRepeatCount = Math.max(maxRepeatCount, old.repeatCount);
@@ -636,28 +499,6 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                 if (!data || !data.recipient) {
                     errors.push(`ID ${finalId}: Bank 404`);
                     continue;
-                }
-
-                // Check Skipped Names (Recipient)
-                const shouldSkip = shouldSkipRecipient(data.recipient, data.reason, data.date, settingsCache);
-
-                if (shouldSkip) {
-                     errors.push(`ID ${finalId}: Skipped (Name)`);
-                     if (!failedTransaction) {
-                         failedTransaction = {
-                             amount: 0,
-                             timeStr: "N/A",
-                             recipientName: data.recipient,
-                             senderName: data.senderName,
-                             senderPhone: data.senderPhone,
-                             status: "Skipped Name",
-                             statusText: "🚫 SKIPPED (NAME)",
-                             id: finalId,
-                             existingTx: old,
-                             bankDate: data.date
-                         };
-                     }
-                     continue;
                 }
 
                 // Verify Data (Pass 0 as amount to just check validity of Name/Date)
@@ -777,7 +618,6 @@ export async function handleMultiIntegrationVerify(request, tabId) {
             finalStatus = failedTransaction.status;
             statusText = failedTransaction.statusText;
             if (finalStatus === "Old Receipt") finalColor = "#ff9800";
-            else if (finalStatus === "Skipped Name") finalColor = "#9ca3af";
             else finalColor = "#f44336";
             
             foundAmt = failedTransaction.amount;
@@ -797,7 +637,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
             statusText = `❌ ${errors[0]}`;
 
             // FALLBACK FIX: Extract ID from error string if failedTransaction was missed
-            const idMatch = errors[0].match(/^ID (\d+): (.*)$/);
+            const idMatch = errors[0].match(/^ID ([A-Z0-9]+): (.*)$/i);
             if (idMatch) {
                 extractedId = idMatch[1];
                 const errType = idMatch[2];
@@ -815,10 +655,6 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                     finalStatus = "Bank 404";
                     finalColor = "#f59e0b";
                     statusText = "⚠️ BANK 404 (NOT FOUND)";
-                } else if (errType.includes("Skipped (Name)")) {
-                    finalStatus = "Skipped Name";
-                    finalColor = "#9ca3af";
-                    statusText = "🚫 SKIPPED (NAME)";
                 }
             }
         } else {
@@ -854,7 +690,6 @@ export async function handleMultiIntegrationVerify(request, tabId) {
             extractedId: extractedId,
             imgUrl: primaryUrl
         }).catch(() => {});
-        reportOutcome(false); // No valid transactions found in batch
         return;
     }
 
@@ -894,5 +729,4 @@ export async function handleMultiIntegrationVerify(request, tabId) {
         extractedId: validTransactions.map(t => t.id).join(', '),
         imgUrl: primaryUrl
     }).catch(() => {});
-    reportOutcome(true); // Success
 }

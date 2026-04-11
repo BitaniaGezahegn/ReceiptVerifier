@@ -20,6 +20,8 @@
   "host_permissions": [
     "https://*.my-managment.com/*",
     "https://transactioninfo.ebirr.com/*",
+    "https://transactioninfo.ethiotelecom.et/*",
+    "https://cs.bankofabyssinia.com/*",
     "https://*.firebaseio.com/*",
     "https://*.googleapis.com/*",
     "https://api.groq.com/*",
@@ -30,11 +32,11 @@
     "scopes": [
       "https://www.googleapis.com/auth/userinfo.email",
       "https://www.googleapis.com/auth/userinfo.profile",
-      "openid"
+      "openid" 
     ]
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' file: data: blob: https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://transactioninfo.ebirr.com https://my-managment.com https://*.my-managment.com https://api.groq.com https://api.telegram.org"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' file: data: blob: https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://transactioninfo.ebirr.com https://transactioninfo.ethiotelecom.et https://cs.bankofabyssinia.com https://my-managment.com https://*.my-managment.com https://api.groq.com https://api.telegram.org"
   },
   "content_scripts": [
     {

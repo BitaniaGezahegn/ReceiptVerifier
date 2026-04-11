@@ -77,7 +77,7 @@ export function parseBankDate(dateStr) {
         }
 
         // Fallback for ambiguous formats like DD/MM/YYYY or DD-MM-YYYY
-        const dmyMatch = cleanedDateStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?: T:(\d{2}):(\d{2})(?::(\d{2}))?)?/);
+        const dmyMatch = cleanedDateStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+T?:?(\d{2}):(\d{2})(?::(\d{2}))?)?/);
         if (dmyMatch) {
             const day = dmyMatch[1].padStart(2, '0');
             const month = dmyMatch[2].padStart(2, '0');
