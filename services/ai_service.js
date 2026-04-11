@@ -103,7 +103,7 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
     </|extraction_rules|>
 
     <|output_format|>
-    - If a valid ID is found that matches the specs: Return ONLY the digits. (Example: 801457901704 or 1972262089).
+    - If a valid ID is found that matches the specs: Return ONLY the ID string. (Example: 801457901704 or DD77OLOUBH).
     - If multiple valid candidates exist, prefer the one closest to a recognized label.
     - If NO valid ID matches the specs exactly: Return "ERROR".
     - Do NOT write "Here is the ID". Do NOT include punctuation.
@@ -216,7 +216,7 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
                 return "ERROR";
             }
             
-            return content.replace(/\D/g, '');
+            return content.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
         } catch (e) { 
             console.warn(`Key index ${i} failed:`, e);
             if (attempt === validKeys.length - 1) throw e; 

@@ -51,7 +51,7 @@ export const initSettings = async () => {
 };
 
 export function isValidIdFormat(id) {
-    if (!id || typeof id !== 'string' || !/^\d+$/.test(id)) {
+    if (!id || typeof id !== 'string' || !/^[A-Za-z0-9]+$/.test(id)) {
         return false;
     }
     const banks = settingsCache.banks || DEFAULT_BANKS;

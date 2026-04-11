@@ -58,6 +58,39 @@ async function parseReceipt(url) {
       return result.singleNodeValue ? result.singleNodeValue.innerText.replace(/[\s\u00A0]+/g, ' ').trim() : null;
     };
 
+    // --- Telebirr Specific Logic ---
+    if (url.includes('ethiotelecom.et')) {
+        const fullText = doc.body ? doc.body.innerText : "";
+        
+        // Helper to find value following a label in Telebirr's table-heavy layout
+        const findValue = (label) => {
+            const regex = new RegExp(`${label}\\s*[:]?\\s*([^\\n\\r]+)`, 'i');
+            const match = fullText.match(regex);
+            return match ? match[1].trim() : null;
+        };
+
+        // Telebirr specific mapping
+        const recipient = findValue("Credited Party name") || findValue("የገንዘብ ተቀባይ ስም");
+        const amount = findValue("Settled Amount") || findValue("የተከፈለው መጠን");
+        const date = findValue("Transaction Date") || findValue("የግብይት ቀን");
+        const senderName = findValue("Payer Name") || findValue("የከፋይ ስም");
+        const senderPhone = findValue("Payer Number") || findValue("የከፋይ ስልክ ቁጥር");
+
+        if (!recipient || !amount) {
+            return { error: "Failed to locate Telebirr data. Page might be empty or layout changed." };
+        }
+
+        return {
+            recipient,
+            senderName,
+            senderPhone,
+            date,
+            amount,
+            reason: findValue("Remark") || ""
+        };
+    }
+
+    // --- Default Ebirr Logic ---
     return {
       recipient: getText(BANK_XPATHS.recipient),
       senderName: getText(BANK_XPATHS.senderName),
