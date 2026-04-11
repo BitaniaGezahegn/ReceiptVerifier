@@ -4,12 +4,12 @@ import { settingsCache, isValidIdFormat } from '../../services/settings_service.
 import { callAIVisionWithRetry } from '../../services/ai_service.js';
 import { getTransaction, logTransactionResult } from '../../services/storage_service.js';
 import { verifyTransactionData } from '../../services/verification.js';
-import { setupOffscreenDocument } from '../../services/offscreen_service.js';
-import { getRawBase64, getTimeAgo } from '../../utils/helpers.js';
+import { getRawBase64, getTimeAgo, isRetryableStatus } from '../../utils/helpers.js';
 import * as UI from '../../injectors.js';
 import { BANK_XPATHS } from '../../utils/constants.js';
 import * as TPL from '../../ui/templates.js';
 import { BOABruteforce } from '../../services/boa_service.js';
+import { setupOffscreenDocument } from '../../services/offscreen_service.js';
 
 export async function handleStartAI(amount, imgSrc, tabId) {
   chrome.scripting.executeScript({ target: { tabId: tabId }, func: UI.runShowStatus, args: [TPL.getStatusHtml(), amount] }).catch(() => {});
@@ -117,15 +117,15 @@ export async function openAndVerifyFullData(id, originalTabId, expectedAmount, e
   const maxHours = settingsCache.maxReceiptAge || 0.5;
   const useHeadless = settingsCache.headlessMode !== false;
 
-  // Special handler for BOA which requires JS execution
-  if (matchedBank.handler === 'BOA') {
+  // Special handler for BOA and Telebirr which require real JS execution/rendering
+  if (matchedBank.handler === 'BOA' || matchedBank.handler === 'Telebirr') {
       chrome.scripting.executeScript({
           target: { tabId: originalTabId },
           func: () => {
               const div = document.createElement('div');
               div.id = 'ebirr-loading-overlay';
               div.style = "position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#334155; color:white; padding:10px 20px; border-radius:20px; z-index:999999; font-family:sans-serif; font-size:14px; box-shadow:0 4px 15px rgba(0,0,0,0.3); display:flex; align-items:center; gap:10px;";
-              div.innerHTML = '<span>Verifying with Bank (BOA)... This may take a moment.</span>';
+              div.innerHTML = `<span>Verifying with ${matchedBank.name}... This may take a moment.</span>`;
               document.body.appendChild(div);
           }
       }).catch(() => {});
@@ -163,8 +163,32 @@ export async function openAndVerifyFullData(id, originalTabId, expectedAmount, e
               data = { recipient: null }; // Malformed partial ID
           }
       } else {
-        const verifier = new BOABruteforce();
-        data = await verifier.verifyAndParse(id);
+          if (matchedBank.handler === 'BOA') {
+              const verifier = new BOABruteforce();
+              data = await verifier.verifyAndParse(id);
+          } else {
+              // Telebirr Tab Flow: Open an invisible tab to let JS render
+              data = await new Promise((resolve) => {
+                  chrome.tabs.create({ url: matchedBank.url + id, active: false }, (tab) => {
+                      const listener = (tabId, changeInfo) => {
+                          if (tabId === tab.id && changeInfo.status === 'complete') {
+                              chrome.tabs.onUpdated.removeListener(listener);
+                              // Give the SPA 2.5 seconds to inject the data into the DOM
+                              setTimeout(() => {
+                                  chrome.scripting.executeScript({
+                                      target: { tabId: tab.id },
+                                      func: UI.scrapeBankData
+                                  }, (results) => {
+                                      chrome.tabs.remove(tab.id);
+                                      resolve(results?.[0]?.result);
+                                  });
+                              }, 2500);
+                          }
+                      };
+                      chrome.tabs.onUpdated.addListener(listener);
+                  });
+              });
+          }
       }
 
       // This should be outside the if/else, but inside the BOA block

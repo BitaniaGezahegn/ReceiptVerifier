@@ -43,17 +43,18 @@ export function parseBOAReceipt(doc) {
  */
 export function parseTelebirrReceipt(doc) {
     const data = {};
-    const cells = Array.from(doc.querySelectorAll('td'));
+    const cells = Array.from(doc.querySelectorAll('td, th'));
 
     // 1. Extract Recipient (Credited Party)
-    const recipLabel = cells.find(c => c.innerText.includes("Credited Party name"));
+    const recipLabel = cells.find(c => c.textContent.includes("Credited Party name") || c.textContent.includes("የተከፋይ ስም") || c.textContent.includes("Credited party"));
     if (recipLabel && recipLabel.nextElementSibling) {
-        data.recipient = recipLabel.nextElementSibling.innerText.trim();
+        data.recipient = recipLabel.nextElementSibling.textContent.trim();
+    } else if (doc.body.textContent.includes("Not Found") || doc.body.textContent.includes("አልተገኘም")) {
+        return { recipient: null };
     }
 
     // 2. Extract Amount and Date from the Invoice Details table
-    // Look for the label then find the data row
-    const idLabel = cells.find(c => c.innerText.includes("Invoice No."));
+    const idLabel = cells.find(c => c.textContent.includes("Invoice No.") || c.textContent.includes("የክፍያ ቁጥር") || c.textContent.includes("Transaction No"));
     if (idLabel) {
         const headerRow = idLabel.closest('tr');
         const dataRow = headerRow ? headerRow.nextElementSibling : null;
@@ -61,8 +62,8 @@ export function parseTelebirrReceipt(doc) {
         if (dataRow) {
             const values = dataRow.querySelectorAll('td');
             if (values.length >= 3) {
-                data.date = values[1].innerText.trim();   // e.g. 07-04-2026 11:54:37
-                data.amount = values[2].innerText.trim(); // e.g. 5.00 Birr
+                data.date = values[1].textContent.trim();
+                data.amount = values[2].textContent.trim();
             }
         }
     }

@@ -5,10 +5,10 @@ import { callAIVisionWithRetry } from '../../services/ai_service.js';
 import { getTransaction, logTransactionResult } from '../../services/storage_service.js';
 import { verifyTransactionData } from '../../services/verification.js';
 import { setupOffscreenDocument } from '../../services/offscreen_service.js';
-import { getMimeTypeFromDataUrl, getTimeAgo, isRetryableStatus, parseBankDate } from '../../utils/helpers.js';
 import { auth } from '../../services/firebase_config.js';
 import { reportActivity, reportOutcome } from '../../services/watchdog_service.js';
 import { BOABruteforce } from '../../services/boa_service.js';
+import { parseBankDate, isRetryableStatus, getTimeAgo, getMimeTypeFromDataUrl } from '../../utils/helpers.js';
 
 /**
  * Determines if a recipient should be skipped based on settings.
@@ -17,7 +17,7 @@ import { BOABruteforce } from '../../services/boa_service.js';
  * 2. If name IN list -> Default to SKIP.
  * 3. EXCEPTION: If "Verify if older than Date" is set AND tx is older -> Verify.
  */
-function shouldSkipRecipient(recipientName, reason, dateStr, settings) {
+async function shouldSkipRecipient(recipientName, reason, dateStr, settings) {
     if (settings.skipByNameEnabled === false) return false;
     const skippedNames = settings.skippedNames || [];
     
@@ -341,6 +341,7 @@ export async function handleIntegrationVerify(request, tabId) {
                     status: effectiveStatus,
                     originalStatus: old.status,
                     color: color,
+                    // getTimeAgo is used here, ensure it's imported or available
                     statusText: statusText,
                     foundAmt: old.amount || "0",
                     timeStr: getTimeAgo(old.timestamp, old.dateVerified) || "N/A",
@@ -430,7 +431,7 @@ export async function handleIntegrationVerify(request, tabId) {
       }
 
       // CHECK FOR SKIPPED NAMES (Recipient)
-      const shouldSkip = shouldSkipRecipient(data.recipient, data.reason, data.date, settingsCache);
+      const shouldSkip = await shouldSkipRecipient(data.recipient, data.reason, data.date, settingsCache);
 
       if (shouldSkip) {
           const result = {
@@ -674,7 +675,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                         }
 
                         await logTransactionResult(finalId, { status: "Repeat", foundAmt: old.amount }, old);
-                        errors.push(`ID : Duplicate / Repeat`);
+                        errors.push(`ID ${finalId}: Duplicate / Repeat`);
                         maxRepeatCount = Math.max(maxRepeatCount, old.repeatCount);
                         if (!duplicateTransaction) duplicateTransaction = old;
                         continue;
@@ -697,7 +698,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                 }
 
                 // Check Skipped Names (Recipient)
-                const shouldSkip = shouldSkipRecipient(data.recipient, data.reason, data.date, settingsCache);
+                const shouldSkip = await shouldSkipRecipient(data.recipient, data.reason, data.date, settingsCache);
 
                 if (shouldSkip) {
                      errors.push(`ID ${finalId}: Skipped (Name)`);
@@ -743,7 +744,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                 }
                 
                 if (!check.nameOk || !check.timeOk) {
-                     errors.push(`ID : ${check.status}`);
+                     errors.push(`ID ${finalId}: ${check.status}`);
                      if (!failedTransaction) {
                          failedTransaction = {
                              amount: check.foundAmt,
@@ -855,7 +856,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
             statusText = `❌ ${errors[0]}`;
 
             // FALLBACK FIX: Extract ID from error string if failedTransaction was missed
-            const idMatch = errors[0].match(/^ID ([A-Za-z0-9|]+): (.*)$/);
+            const idMatch = errors[0].match(/^ID ([A-Z0-9|]+): (.*)$/i);
             if (idMatch) {
                 extractedId = idMatch[1];
                 const errType = idMatch[2];

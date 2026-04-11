@@ -147,7 +147,7 @@ export function showRandomReviewModal(html, mgmtTabId, rowId, extractedId, imgUr
       modal.innerHTML = html;
       shadow.appendChild(modal);
       const done = () => host.remove();
-      shadow.getElementById('btn-copy-exit').onclick = (e) => { e.stopPropagation(); navigator.clipboard.writeText(status).finally(() => { chrome.runtime.sendMessage({ action: "closeTab" }); done(); }); };
+      shadow.getElementById('btn-copy-exit').onclick = (e) => { e.stopPropagation(); navigator.clipboard.writeText(status || "Repeat").then(() => { chrome.runtime.sendMessage({ action: "closeTab" }); done(); }); };
       shadow.getElementById('btn-continue').onclick = (e) => { e.stopPropagation(); chrome.runtime.sendMessage({ action: "continueDuplicate", id: id, amount: amount }); done(); };
       host.addEventListener('click', done); modal.addEventListener('click', (e) => e.stopPropagation());
   }

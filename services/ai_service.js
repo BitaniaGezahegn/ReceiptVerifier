@@ -100,7 +100,7 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
 
     2. **Spatial Logic (Vertical Stack Fix):**
     - The ID is often to the right of the label OR on the lines below it.
-    - **THE DATE TRAP:** If the line immediately below "Transfer ID" is a date or time (contains "/" or ":"), SKIP it. The Transaction ID is the long numeric string on the VERY NEXT line.
+    - **THE DATE TRAP:** If the line immediately below "Transfer ID" is a date or time (contains "/" or ":"), SKIP it. The Transaction ID is the long ALPHANUMERIC string on the VERY NEXT line.
     - In SMS sentences, the ID is often at the very start or end of the message.
 
     3. **IGNORE Distractors (Crucial):**
@@ -236,15 +236,12 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
                 return "ERROR";
             }
             
-            // Normalization: Remove whitespace and convert to upper for prefix checking
+            // Normalization: Remove whitespace and convert to upper
             const normalized = content.replace(/\s/g, '').toUpperCase();
-
-            // Cleanup: Allow alphanumeric and pipe (|) for BOA/Telebirr, otherwise strictly digits
-            if (normalized.includes("FT") || normalized.includes("DD") || normalized.includes("|")) {
-                return normalized.replace(/[^A-Z0-9|]/g, '');
-            }
-
-            return content.replace(/\D/g, ''); // Default behavior
+            
+            // Cleanup: Keep only Alphanumeric characters and Pipe (|)
+            // We allow letters by default so misread prefixes don't destroy the payload.
+            return normalized.replace(/[^A-Z0-9|]/g, '');
         } catch (e) { 
             console.warn(`Key index ${i} failed:`, e);
             if (attempt === validKeys.length - 1) throw e; 

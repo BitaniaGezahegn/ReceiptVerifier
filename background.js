@@ -2,13 +2,13 @@
 import { DEFAULT_API_KEY, DEFAULT_BANKS } from './config.js';
 import { initSettings, settingsCache } from './services/settings_service.js';
 import { routeMessage } from './controllers/background/message_router.js';
-import { handleStartAI, handleScreenshotFlow } from './controllers/background/context_menu_controller.js';
 import * as UI from './injectors.js';
 import * as TPL from './ui/templates.js';
 import './services/auth_service.js'; // Initialize Auth
 import { sendTelegramNotification } from './services/notification_service.js';
 import { startWatchdog, onWatchdogAlarm, reportActivity } from './services/watchdog_service.js';
 import { BOABruteforce } from './services/boa_service.js';
+import { handleStartAI, handleScreenshotFlow } from './controllers/background/context_menu_controller.js';
 
 // 1. INITIALIZE EXTENSION
 chrome.runtime.onInstalled.addListener(async () => {
@@ -82,9 +82,9 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 });
 
 // 3. COMMAND LISTENER
-chrome.commands.onCommand.addListener((command) => {
+chrome.commands.onCommand.addListener(async (command) => {
   if (command === "take_screenshot_verify") {
-    handleScreenshotFlow();
+    await handleScreenshotFlow();
   }
 });
 
@@ -96,4 +96,7 @@ chrome.runtime.onMessage.addListener((request, sender) => {
 });
 
 // 4. MESSAGE LISTENER
-chrome.runtime.onMessage.addListener(routeMessage);
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    routeMessage(request, sender, sendResponse);
+    return true; // Keep channel open for async responses
+});

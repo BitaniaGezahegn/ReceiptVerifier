@@ -49,11 +49,11 @@ function createScreenshotButton() {
 
     button.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+        if (typeof chrome !== 'undefined' && chrome.runtime && !!chrome.runtime.id) {
             chrome.runtime.sendMessage({ action: 'initiateScreenshot' });
         } else {
-            console.warn("Ebirr Verifier: Extension context invalidated. Please refresh the page.");
-            button.remove();
+            alert("Ebirr Verifier: Extension updated or reloaded. Please refresh this page to use the tool.");
+            button.style.display = 'none';
         }
     });
 }

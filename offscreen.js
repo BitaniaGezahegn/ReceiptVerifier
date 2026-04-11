@@ -50,11 +50,13 @@ async function parseReceipt(url) {
 
     if (url.includes("bankofabyssinia.com")) {
         const boaData = parseBOAReceipt(doc);
+        if (!boaData.recipient && !text.includes('not found')) return { error: "BOA Parser Failed: Structure mismatch" };
         return { ...boaData, bank: 'BOA' };
     }
     
     if (url.includes("ethiotelecom.et")) {
         const teleData = parseTelebirrReceipt(doc);
+        if (!teleData.recipient && !text.includes('Not Found') && !text.includes('አልተገኘም')) return { error: "Telebirr Parser Failed: Receipt structure not found." };
         return { ...teleData, bank: 'Telebirr' };
     }
     

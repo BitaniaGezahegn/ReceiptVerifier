@@ -228,7 +228,7 @@ export function showRandomReviewModal(html, mgmtTabId, rowId, extractedId, imgUr
     });
   }
   
-  export function scrapeBankData() {
+  export async function scrapeBankData() {
     // 1. Attempt to scrape BOA (Abyssinia) Receipt
     const boaTable = document.querySelector('#invoice table');
     if (boaTable) {
@@ -256,6 +256,38 @@ export function showRandomReviewModal(html, mgmtTabId, rowId, extractedId, imgUr
                 bank: "BOA" // Important for date parsing logic
             };
         }
+    }
+
+    // 1.5 Attempt to scrape Telebirr Receipt
+    if (window.location.hostname.includes("ethiotelecom.et")) {
+        // Timing Fix: Polling for data (Telebirr is a dynamic app)
+        for (let i = 0; i < 20; i++) {
+            const cells = Array.from(document.querySelectorAll('td, th'));
+            const recipLabel = cells.find(c => c.textContent.includes("Credited Party name") || c.textContent.includes("የተከፋይ ስም"));
+            const idLabel = cells.find(c => c.textContent.includes("Invoice No.") || c.textContent.includes("የክፍያ ቁጥር"));
+
+            if (recipLabel && recipLabel.nextElementSibling && recipLabel.nextElementSibling.textContent.trim()) {
+                const data = { 
+                    recipient: recipLabel.nextElementSibling.textContent.trim(), 
+                    bank: "Telebirr" 
+                };
+                
+                if (idLabel) {
+                    const dataRow = idLabel.closest('tr').nextElementSibling;
+                    const values = dataRow ? dataRow.querySelectorAll('td') : [];
+                    if (values.length >= 3) {
+                        data.date = values[1].textContent.trim();
+                        data.amount = values[2].textContent.trim();
+                        return data;
+                    }
+                }
+            }
+            if (document.body.textContent.includes("Not Found") || document.body.textContent.includes("አልተገኘም")) {
+                return { recipient: null };
+            }
+            await new Promise(r => setTimeout(r, 200));
+        }
+        return { error: "Telebirr data failed to load in time or structure changed." };
     }
 
     // 2. Attempt to scrape Ebirr/Standard Receipt
@@ -343,13 +375,13 @@ export function showRandomReviewModal(html, mgmtTabId, rowId, extractedId, imgUr
         } else {
           const manId = await showCustomPrompt(manualHtml);
           if (manId) {
-            chrome.runtime.sendMessage({ action: "manualIdEntry", id: manId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(), amount: amt });
+            chrome.runtime.sendMessage({ action: "manualIdEntry", id: manId.trim().toUpperCase(), amount: amt });
           }
         }
       } else if (mode === 'manual') {
         const manId = await showCustomPrompt(manualHtml);
         if (manId) {
-          chrome.runtime.sendMessage({ action: "manualIdEntry", id: manId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(), amount: amt });
+          chrome.runtime.sendMessage({ action: "manualIdEntry", id: manId.trim().toUpperCase(), amount: amt });
         }
       }
     }

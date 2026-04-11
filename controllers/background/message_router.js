@@ -1,15 +1,15 @@
 // c:\Users\BT\Desktop\Venv\zOther\Ebirr_Chrome_Verifier\controllers\background\message_router.js
-import { handleStartAI, handleManualId, handleProcessedId, handleScreenshotFlow, openAndVerifyFullData } from './context_menu_controller.js';
+import { handleStartAI, handleManualId, handleProcessedId, openAndVerifyFullData, handleScreenshotFlow } from './context_menu_controller.js';
+import { callAIVisionWithRetry } from '../../services/ai_service.js';
 import { handleIntegrationVerify, handleMultiIntegrationVerify } from './integration_controller.js';
 import { handlePdfCapture } from '../../services/pdf_service.js';
-import { callAIVisionWithRetry } from '../../services/ai_service.js';
 import { isValidIdFormat } from '../../services/settings_service.js';
 import { setupOffscreenDocument } from '../../services/offscreen_service.js';
 import * as UI from '../../injectors.js';
 import * as TPL from '../../ui/templates.js';
 import { sendTelegramNotification } from '../../services/notification_service.js';
 
-export function routeMessage(request, sender, sendResponse) {
+export async function routeMessage(request, sender, sendResponse) {
   switch (request.action) {
     case "captureCropped":
       const tabIdForCapture = sender.tab.id;
@@ -42,7 +42,7 @@ export function routeMessage(request, sender, sendResponse) {
           }
 
           chrome.scripting.executeScript({ target: { tabId: completedTabId }, func: () => document.getElementById('ebirr-status-host')?.remove() }).catch(() => {});
-          handleProcessedId(extractedId, amount, completedTabId);
+          await handleProcessedId(extractedId, amount, completedTabId);
         } catch (err) {
           chrome.scripting.executeScript({ target: { tabId: completedTabId }, func: () => document.getElementById('ebirr-status-host')?.remove() }).catch(() => {});
           chrome.scripting.executeScript({ target: { tabId: completedTabId }, func: UI.showAiFailureModal, args: [TPL.getAiFailureHtml(), amount] }).catch(() => {});
@@ -51,15 +51,15 @@ export function routeMessage(request, sender, sendResponse) {
       break;
 
     case 'initiateScreenshot':
-      handleScreenshotFlow();
+      await handleScreenshotFlow();
       break;
 
     case "startAI":
-      handleStartAI(request.amount, request.src, sender.tab.id);
+      await handleStartAI(request.amount, request.src, sender.tab.id);
       break;
 
     case "manualIdEntry":
-      handleManualId(request.id, request.amount, sender.tab.id);
+      await handleManualId(request.id, request.amount, sender.tab.id);
       break;
 
     case "triggerManualPrompt":
@@ -74,7 +74,7 @@ export function routeMessage(request, sender, sendResponse) {
       break;
 
     case "continueDuplicate":
-      openAndVerifyFullData(request.id, sender.tab.id, request.amount);
+      await openAndVerifyFullData(request.id, sender.tab.id, request.amount);
       break;
 
     case "closeTab":
