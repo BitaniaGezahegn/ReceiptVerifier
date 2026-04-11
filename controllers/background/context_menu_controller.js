@@ -184,8 +184,10 @@ export async function openAndVerifyFullData(id, originalTabId, expectedAmount, e
                     args: [BANK_XPATHS]
                 }, async (results) => {
                     const data = results?.[0]?.result;
+                    console.log("[ContextMenu] Scrape Result:", data);
                     
                     if (!data || data.error || !data.recipient) {
+                        console.error("[ContextMenu] Verification aborted: Data missing.");
                         chrome.scripting.executeScript({
                             target: { tabId: tab.id },
                             func: (msg) => alert(msg),

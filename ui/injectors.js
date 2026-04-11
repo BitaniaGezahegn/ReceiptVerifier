@@ -217,20 +217,74 @@ export function showRandomReviewModal(html, mgmtTabId, rowId, extractedId, imgUr
     });
   }
   
-  export function scrapeBankData(xpaths) {
-    const getX = (p) => { const res = document.evaluate(p, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue; return res ? res.innerText.replace(/[\s\u00A0]+/g, ' ').trim() : null; };
-    const nodeR = getX(xpaths.recipient); const nodeD = getX(xpaths.date); const nodeA = getX(xpaths.amount);
-    
-    if (!nodeR || !nodeD || !nodeA) return { error: "Data Missing on Bank Page" };
+  export async function scrapeBankData(xpaths) {
+    console.log("[Scraper] Starting extraction. URL:", window.location.href);
 
-    return {
-        recipient: nodeR,
-        reason: getX(xpaths.reason),
-        date: nodeD,
-        amount: nodeA,
-        senderName: getX(xpaths.senderName),
-        senderPhone: getX(xpaths.senderPhone)
+    const extract = () => {
+        const getX = (p) => { const res = document.evaluate(p, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue; return res ? res.innerText.replace(/[\s\u00A0]+/g, ' ').trim() : null; };
+        
+        // --- Telebirr Fallback (Label-based) ---
+        if (window.location.host.includes('ethiotelecom.et')) {
+            const fullText = document.body ? document.body.innerText : "";
+            const findValue = (label) => {
+                const regex = new RegExp(`${label}\\s*[:]?\\s*([^\\n\\r]+)`, 'i');
+                const match = fullText.match(regex);
+                return match ? match[1].trim() : null;
+            };
+
+            const recipient = findValue("Credited Party name") || findValue("የገንዘብ ተቀባይ ስም");
+            const amount = findValue("Settled Amount") || findValue("የተከፈለው መጠን");
+
+            if (recipient && amount) {
+                console.log("[Scraper] Telebirr data found via labels.");
+                return {
+                    recipient,
+                    senderName: findValue("Payer Name") || findValue("የከፋይ ስም"),
+                    senderPhone: findValue("Payer Number") || findValue("የከፋይ ስልክ ቁጥር"),
+                    date: findValue("Transaction Date") || findValue("የግብይት ቀን"),
+                    amount,
+                    reason: findValue("Remark") || ""
+                };
+            }
+        }
+
+        // --- Default Ebirr Logic (XPath-based) ---
+        const nodeR = getX(xpaths.recipient); 
+        const nodeD = getX(xpaths.date); 
+        const nodeA = getX(xpaths.amount);
+        
+        if (nodeR && nodeD && nodeA) {
+            console.log("[Scraper] Ebirr data found via XPaths.");
+            return {
+                recipient: nodeR,
+                reason: getX(xpaths.reason),
+                date: nodeD,
+                amount: nodeA,
+                senderName: getX(xpaths.senderName),
+                senderPhone: getX(xpaths.senderPhone)
+            };
+        }
+        return null;
     };
+
+    // 1. Immediate attempt
+    const initial = extract();
+    if (initial) return initial;
+
+    // 2. Timing fix: Wait up to 5s for dynamic content
+    console.log("[Scraper] Data missing, waiting for DOM changes...");
+    return new Promise(resolve => {
+        const observer = new MutationObserver(() => {
+            const data = extract();
+            if (data) { observer.disconnect(); resolve(data); }
+        });
+        observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+        setTimeout(() => { 
+            observer.disconnect(); 
+            console.warn("[Scraper] Wait timed out. Final check...");
+            resolve(extract() || { error: "Data Missing on Bank Page" }); 
+        }, 5000);
+    });
   }
   
   export function modalInjection(amt, imgSrc, mode, askHtml, manualHtml) {
