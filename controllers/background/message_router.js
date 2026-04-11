@@ -69,7 +69,7 @@ export function routeMessage(request, sender, sendResponse) {
         args: [TPL.getCustomPromptHtml("Manual Transaction ID", "Please enter the transaction ID below.")]
       }, (results) => {
         const manId = results?.[0]?.result;
-        if (manId) handleManualId(manId.replace(/\D/g, ''), request.amount, sender.tab.id);
+        if (manId) handleManualId(manId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(), request.amount, sender.tab.id);
       });
       break;
 

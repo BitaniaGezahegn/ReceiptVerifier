@@ -1,6 +1,6 @@
 // c:\Users\BT\Desktop\Venv\zOther\Ebirr_Chrome_Verifier\services\ai_service.js
 import { DEFAULT_API_KEY, DEFAULT_BANKS } from '../config.js';
-import { settingsCache } from './settings_service.js';
+import { settingsCache, isValidIdFormat } from './settings_service.js';
 
 // RATE LIMITING QUEUE
 let aiQueue = Promise.resolve();
@@ -68,11 +68,12 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
     }
   
     // Generate Dynamic Prompt
-    const specs = banks.map(b => `- A ${b.length}-digit number starting with "${b.prefixes.join('" or "')}".`).join('\n  ');
+    const specs = banks.map(b => `- A ${b.length}-character alphanumeric string starting with "${b.prefixes.join('" or "')}".`).join('\n  ');
 
     const dynamicPrompt = `
     You are a specialized Vision OCR system for Ethiopian financial transaction verification.
-    Your ONLY goal is to extract the **Transaction ID** (also called Reference Number or Receipt Number).
+    Your ONLY goal is to extract the **Transaction ID** (also called Reference Number, Receipt Number, or Invoice No.).
+    Note: IDs may contain BOTH letters and numbers (alphanumeric). Telebirr IDs specifically often contain letters after the 'DD' prefix.
 
     <|id_specs|>
     The valid Transaction ID MUST match one of these exact formats:
@@ -81,7 +82,7 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
 
     <|extraction_rules|>
     1. **Locate the Label:** Look for these specific keywords (case-insensitive):
-    - English: "Transfer ID", "Trans ID", "Txn ID", "Receipt No", "Ref No", "Reference", "TID"
+    - English: "Transfer ID", "Trans ID", "Txn ID", "Receipt No", "Invoice No", "Ref No", "Reference", "TID"
     - Afaan Oromoo: "LakkAddaa", "Lakk", "Mogg", "Haftee"
     - Somali: "Tix", "Tixda"
     - Amharic: "የክፍያ ቁጥር", "መለያ ቁጥር"
@@ -89,8 +90,9 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
 
     2. **Spatial Logic (Vertical Stack Fix):**
     - The ID is often to the right of the label OR on the lines below it.
-    - **THE DATE TRAP:** If the line immediately below "Transfer ID" is a date or time (contains "/" or ":"), SKIP it. The Transaction ID is the long numeric string on the VERY NEXT line.
-    - In SMS sentences, the ID is often at the very start or end of the message.
+    - **THE DATE TRAP:** If the line immediately below the label is a date or time (contains "/" or ":"), SKIP it. The Transaction ID is the long alphanumeric string on the VERY NEXT line.
+    - In SMS sentences or tables, the ID is often at the very start or end of the message/record.
+    - **LETTER CONFUSION:** Do not confuse letters with similar-looking numbers (e.g., 'B' vs '8', 'O' vs '0'). Follow the prefixes in <|id_specs|>.
 
     3. **IGNORE Distractors (Crucial):**
     - **Phone Numbers:** REJECT numbers starting with "251", "+251", "09", or "07" if they are 10-13 digits long. These are Sender/Receiver numbers, NOT Transaction IDs.
@@ -98,15 +100,15 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
     - **Amounts:** REJECT numbers following "ETB" or containing decimals (e.g., 100.00).
 
     4. **Final Validation:**
-    - Compare the number you found against the <|id_specs|> list.
-    - If the number does not match the specific *Length* AND *Prefix* defined in the specs, discard it and keep searching the image.
+    - Compare the alphanumeric string you found against the <|id_specs|> list.
+    - If the string does not match the specific *Length* AND *Prefix* defined in the specs, discard it and keep searching the image.
     </|extraction_rules|>
 
     <|output_format|>
-    - If a valid ID is found that matches the specs: Return ONLY the ID string. (Example: 801457901704 or DD77OLOUBH).
+    - If a valid ID is found that matches the specs: Return ONLY the ID string. (Example: 801457901704 or DDB7SKIOWF).
     - If multiple valid candidates exist, prefer the one closest to a recognized label.
     - If NO valid ID matches the specs exactly: Return "ERROR".
-    - Do NOT write "Here is the ID". Do NOT include punctuation.
+    - Do NOT write conversational text. Do NOT include punctuation.
     </|output_format|>
     `;
     
@@ -216,7 +218,15 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
                 return "ERROR";
             }
             
-            return content.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+            // Try to find a specific word in the response that matches bank rules
+            const words = content.split(/[\s,:]+/);
+            for (const word of words) {
+                const cleaned = word.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+                if (isValidIdFormat(cleaned)) return cleaned;
+            }
+
+            const fallback = content.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+            return isValidIdFormat(fallback) ? fallback : "ERROR";
         } catch (e) { 
             console.warn(`Key index ${i} failed:`, e);
             if (attempt === validKeys.length - 1) throw e; 

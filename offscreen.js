@@ -59,32 +59,82 @@ async function parseReceipt(url) {
       return result.singleNodeValue ? result.singleNodeValue.innerText.replace(/[\s\u00A0]+/g, ' ').trim() : null;
     };
 
-    // --- Telebirr Specific Logic ---
-    // Using an iframe allows JS execution and MutationObservers to work for dynamic pages
     if (url.includes('ethiotelecom.et')) {
-        return new Promise((resolve) => {
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            iframe.src = url;
+        // --- Telebirr Headless Logic: Search for JSON data in scripts first ---
+        const scripts = doc.querySelectorAll('script');
+        for (const s of scripts) {
+            const content = s.textContent || "";
+            if (content.includes('receiptNo') || content.includes('settledAmount')) {
+                try {
+                    // Attempt to extract JSON-like structures often found in Telebirr's SPA hydration
+                    const jsonMatch = content.match(/\{"receiptNo":.*?\}/);
+                    if (jsonMatch) {
+                        const data = JSON.parse(jsonMatch[0]);
+                        console.log("[Offscreen] Telebirr Data found in script JSON:", data);
+                        return {
+                            recipient: data.creditedPartyName || data.receiverName,
+                            amount: data.settledAmount || data.amount,
+                            date: data.transactionDate || data.transDate,
+                            senderName: data.payerName || data.senderName,
+                            reason: data.remark || ""
+                        };
+                    }
+                } catch (e) { console.warn("[Offscreen] JSON parse failed in Telebirr script."); }
+            }
+        }
 
-            const timeout = setTimeout(() => {
-                chrome.runtime.onMessage.removeListener(messageListener);
-                if (iframe.parentNode) document.body.removeChild(iframe);
-                resolve({ error: "Telebirr verification timed out (30s)" });
-            }, 30000);
+        // Strip scripts and styles to prevent labels matching code snippets
+        const cleanDoc = doc.cloneNode(true);
+        cleanDoc.querySelectorAll('script, style').forEach(s => s.remove());
+        const fullText = cleanDoc.body ? (cleanDoc.body.innerText || cleanDoc.body.textContent || "") : "";
 
-            const messageListener = (msg) => {
-                if (msg.action === 'telebirr_data_extracted' && msg.url === url) {
-                    clearTimeout(timeout);
-                    chrome.runtime.onMessage.removeListener(messageListener);
-                    if (iframe.parentNode) document.body.removeChild(iframe);
-                    resolve(msg.data);
-                }
-            };
+        console.log("[Offscreen] Telebirr Raw Text Content:", fullText);
 
-            chrome.runtime.onMessage.addListener(messageListener);
-            document.body.appendChild(iframe);
-        });
+        const findValue = (label) => {
+            // Word boundary or forward slash support for bilingual labels
+            const regex = new RegExp(`(?:^|[\\s/])${label}\\s*[:]?\\s*([^\\n\\r{}()=>]{1,100})`, 'i');
+            const match = fullText.match(regex);
+            const val = match ? match[1].trim() : null;
+            console.log(`[Offscreen] Label Search [${label}]:`, val);
+            return val;
+        };
+
+        const recipient = findValue("Credited Party name") || findValue("የገንዘብ ተቀባይ ስም") || findValue("Receiver") || findValue("Recipient");
+        let amount = findValue("Settled Amount") || findValue("የተከፈለው መጠን") || findValue("Total Paid Amount");
+        let date = findValue("Transaction Date") || findValue("የግብይት ቀን") || findValue("Time");
+
+        // --- Telebirr Data Recovery (Fix for collapsed layout in Headless) ---
+        // If amount or date contains the ID (e.g. DD77...), it's a merged row.
+        const hasIdInFields = [amount, date].some(v => v && v.toUpperCase().includes('DD'));
+        
+        if (hasIdInFields || !amount || !date) {
+            console.log("[Offscreen] Data missing or merged with ID. Performing global pattern recovery...");
+            
+            // Search the entire text for patterns regardless of proximity to labels
+            const amtPattern = fullText.match(/\d+\.\d{2}/);
+            const datePattern = fullText.match(/\d{2}-\d{2}-\d{4}(?:\s+\d{2}:\d{2}:\d{2})?/);
+
+            if (amtPattern) amount = amtPattern[0];
+            if (datePattern) date = datePattern[0];
+        } else if (amount && amount.includes('\t')) {
+            // Standard tab-separation fallback
+            const parts = amount.split('\t').map(p => p.trim());
+            const fAmt = parts.find(p => p.toLowerCase().includes('birr') || (p.includes('.') && !p.includes(':')));
+            const fDate = parts.find(p => p.includes('-') && p.includes(':'));
+            if (fAmt) amount = fAmt;
+            if (fDate && !date) date = fDate;
+        }
+
+        console.log("[Offscreen] Telebirr Scrape Result:", { recipient, amount, date });
+
+        return {
+            recipient,
+            senderName: findValue("Payer Name") || findValue("የከፋይ ስም") || findValue("Sender") || "-",
+            senderPhone: findValue("Payer Number") || findValue("የከፋይ ስልክ ቁጥር") || findValue("Payer Phone") || "-",
+            date: date,
+            amount,
+            reason: findValue("Remark") || ""
+        };
     }
 
     // --- Default Ebirr Logic ---

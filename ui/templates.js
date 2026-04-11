@@ -96,10 +96,10 @@ export const getResultOverlayHtml = (result, repeatCount) => {
       </style>
       <div class="header"><h2>${statusText}</h2></div>
       <div class="content">
-        <div class="row"><span class="label">Amount</span><div style="display:flex; align-items:center;"><span class="value">${foundAmt} ETB</span><span class="check-icon">${amtOk ? '✅' : '❌'}</span></div></div>
+        <div class="row"><span class="label">Amount</span><div style="display:flex; align-items:center;"><span class="value">${foundAmt} ETB</span><span class="check-icon" title="Amount must match exactly">${amtOk ? '✅' : '❌'}</span></div></div>
         <div class="row"><span class="label">Count</span><div style="display:flex; align-items:center;"><span class="value">${(repeatCount || 0) + 1}</span></div></div>
-        <div class="row"><span class="label">Recipient</span><div style="display:flex; align-items:center;"><span class="value value-name" title="${foundName}">${foundName}</span><span class="check-icon">${nameOk ? '✅' : '❌'}</span></div></div>
-        <div class="row"><span class="label">Age</span><div style="display:flex; align-items:center;"><span class="value">${timeStr}</span><span class="check-icon">${timeOk ? '✅' : '❌'}</span></div></div>
+        <div class="row"><span class="label">Recipient</span><div style="display:flex; align-items:center;"><span class="value value-name" title="Found: ${foundName}">${foundName}</span><span class="check-icon" title="Name must contain your Target Name">${nameOk ? '✅' : '❌'}</span></div></div>
+        <div class="row"><span class="label">Age</span><div style="display:flex; align-items:center;"><span class="value">${timeStr}</span><span class="check-icon" title="Receipt must be newer than your Max Age setting">${timeOk ? '✅' : '❌'}</span></div></div>
         ${(senderName || senderPhone) ? `<div class="sender-box">${senderName ? `<div class="sender-row"><span class="sender-label">Sender:</span><span class="sender-val">${senderName}</span></div>` : ''}${senderPhone ? `<div class="sender-row"><span class="sender-label">Phone:</span><span class="sender-val">${senderPhone}</span></div>` : ''}</div>` : ''}
       </div>
       <div class="actions"><button id="btn-action" class="btn-primary">${isSuccess ? 'Exit' : `Copy "${status}" & Exit`}</button><button id="btn-continue" class="btn-secondary">Continue</button></div>

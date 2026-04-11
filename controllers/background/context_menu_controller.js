@@ -168,7 +168,16 @@ export async function openAndVerifyFullData(id, originalTabId, expectedAmount, e
       chrome.scripting.executeScript({
         target: { tabId: originalTabId },
         func: UI.showResultOverlay,
-        args: [TPL.getResultOverlayHtml(result, repeatCount), id, result.status, result.foundAmt, result.senderName, result.senderPhone, result.timeStr, result.foundName]
+        args: [
+          TPL.getResultOverlayHtml(result, repeatCount), 
+          String(id || ""), 
+          String(result.status || ""), 
+          Number(result.foundAmt) || 0, 
+          String(result.senderName || "-"), 
+          String(result.senderPhone || "-"), 
+          String(result.timeStr || "N/A"), 
+          String(result.foundName || "N/A")
+        ]
       }).catch(() => {});
     });
   } else {

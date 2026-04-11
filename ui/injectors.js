@@ -227,12 +227,13 @@ export function showRandomReviewModal(html, mgmtTabId, rowId, extractedId, imgUr
         if (window.location.host.includes('ethiotelecom.et')) {
             const fullText = document.body ? document.body.innerText : "";
             const findValue = (label) => {
-                const regex = new RegExp(`${label}\\s*[:]?\\s*([^\\n\\r]+)`, 'i');
+                // Boundary fix for bilingual slash labels
+                const regex = new RegExp(`(?:^|[\\s/])${label}\\s*[:]?\\s*([^\\n\\r{}()=>]{1,100})`, 'i');
                 const match = fullText.match(regex);
                 return match ? match[1].trim() : null;
             };
 
-            const recipient = findValue("Credited Party name") || findValue("የገንዘብ ተቀባይ ስም");
+            const recipient = findValue("Credited Party name") || findValue("የገንዘብ ተቀባይ ስም") || findValue("Receiver") || findValue("Recipient");
             let amount = findValue("Settled Amount") || findValue("የተከፈለው መጠን");
             let date = findValue("Transaction Date") || findValue("የግብይት ቀን");
 
