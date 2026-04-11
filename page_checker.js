@@ -74,14 +74,29 @@ function handleTelebirrExtraction() {
         };
 
         const recipient = findValue("Credited Party name") || findValue("የገንዘብ ተቀባይ ስም");
-        const amount = findValue("Settled Amount") || findValue("የተከፈለው መጠን");
+        let amount = findValue("Settled Amount") || findValue("የተከፈለው መጠን");
+        let date = findValue("Transaction Date") || findValue("የግብይት ቀን");
+
+        // Handle cases where Telebirr returns a tab-separated row in one label match
+        if (amount && amount.includes('\t')) {
+            const parts = amount.split('\t').map(p => p.trim());
+            // Amount is usually the one with a decimal point and "Birr" or just numbers
+            const foundAmt = parts.find(p => p.toLowerCase().includes('birr') || (p.includes('.') && !p.includes(':')));
+            const foundDate = parts.find(p => p.includes('-') && p.includes(':'));
+            
+            if (foundAmt) amount = foundAmt;
+            // Prioritize date found within the record row over potential noisy page matches
+            if (foundDate) {
+                date = foundDate;
+            }
+        }
 
         if (recipient && amount) {
             return {
                 recipient,
-                senderName: findValue("Payer Name") || findValue("የከፋይ ስም"),
-                senderPhone: findValue("Payer Number") || findValue("የከፋይ ስልክ ቁጥር"),
-                date: findValue("Transaction Date") || findValue("የግብይት ቀን"),
+                senderName: findValue("Payer Name") || findValue("የከፋይ ስም") || findValue("Sender"),
+                senderPhone: findValue("Payer Number") || findValue("የከፋይ ስልክ ቁጥር") || findValue("Payer Phone"),
+                date: date,
                 amount,
                 reason: findValue("Remark") || ""
             };

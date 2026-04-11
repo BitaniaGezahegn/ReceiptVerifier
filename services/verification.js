@@ -21,7 +21,10 @@ export function verifyTransactionData(data, expectedAmt, targetName, maxHours) {
     
     // Robust Amount Parsing
     const numExpected = parseFloat(expectedAmt);
-    const cleanAmtStr = (data.amount || "0").replace(/[^0-9.]/g, '');
+    // Remove commas first to ensure thousands (e.g. 1,250.00) are not truncated by the regex
+    const normalizedAmt = (data.amount || "0").replace(/,/g, '');
+    const amtMatch = normalizedAmt.match(/\d+\.\d{2}/);
+    const cleanAmtStr = amtMatch ? amtMatch[0] : (data.amount || "0").replace(/[^0-9.]/g, '');
     const foundAmt = parseFloat(cleanAmtStr);
     
     const amtOk = Math.abs(foundAmt - numExpected) < 0.01;
