@@ -49,8 +49,70 @@ function createScreenshotButton() {
 
     button.addEventListener('click', (e) => {
         e.stopPropagation();
-        chrome.runtime.sendMessage({ action: 'initiateScreenshot' });
+        if (typeof chrome !== 'undefined' && chrome.runtime && !!chrome.runtime.id) {
+            chrome.runtime.sendMessage({ action: 'initiateScreenshot' });
+        } else {
+            alert("Ebirr Verifier: Extension updated or reloaded. Please refresh this page to use the tool.");
+            button.style.display = 'none';
+        }
     });
+}
+
+/**
+ * Telebirr Receipt Extraction Logic
+ * Runs when this script is loaded inside a Telebirr receipt page (even in an iframe)
+ */
+function handleTelebirrExtraction() {
+    if (!window.location.href.includes('transactioninfo.ethiotelecom.et')) return;
+
+    const extract = () => {
+        const fullText = document.body ? document.body.innerText : "";
+        const findValue = (label) => {
+            const regex = new RegExp(`${label}\\s*[:]?\\s*([^\\n\\r]+)`, 'i');
+            const match = fullText.match(regex);
+            return match ? match[1].trim() : null;
+        };
+
+        const recipient = findValue("Credited Party name") || findValue("የገንዘብ ተቀባይ ስም");
+        const amount = findValue("Settled Amount") || findValue("የተከፈለው መጠን");
+
+        if (recipient && amount) {
+            return {
+                recipient,
+                senderName: findValue("Payer Name") || findValue("የከፋይ ስም"),
+                senderPhone: findValue("Payer Number") || findValue("የከፋይ ስልክ ቁጥር"),
+                date: findValue("Transaction Date") || findValue("የግብይት ቀን"),
+                amount,
+                reason: findValue("Remark") || ""
+            };
+        }
+        return null;
+    };
+
+    // 1. Try immediate extraction
+    const initialData = extract();
+    if (initialData) {
+        chrome.runtime.sendMessage({ action: 'telebirr_data_extracted', url: window.location.href, data: initialData });
+        return;
+    }
+
+    // 2. Use MutationObserver to wait for the dynamic table to load
+    const observer = new MutationObserver((mutations, obs) => {
+        const data = extract();
+        if (data) {
+            obs.disconnect();
+            chrome.runtime.sendMessage({ action: 'telebirr_data_extracted', url: window.location.href, data: data });
+        }
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true
+    });
+
+    // Safety: disconnect after 25s
+    setTimeout(() => observer.disconnect(), 25000);
 }
 
 function init() {
@@ -59,6 +121,11 @@ function init() {
         if (!document.getElementById('ebirr-screenshot-button')) {
             createScreenshotButton();
         }
+    }
+
+    // If we are on a Telebirr receipt page, start extraction
+    if (window.location.host.includes('ethiotelecom.et')) {
+        handleTelebirrExtraction();
     }
 }
 

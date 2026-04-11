@@ -60,47 +60,31 @@ async function parseReceipt(url) {
     };
 
     // --- Telebirr Specific Logic ---
+    // Using an iframe allows JS execution and MutationObservers to work for dynamic pages
     if (url.includes('ethiotelecom.et')) {
-        const MAX_RETRIES = 5;
-        const RETRY_DELAY_MS = 2000; // 2 seconds
+        return new Promise((resolve) => {
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = url;
 
-        for (let i = 0; i < MAX_RETRIES; i++) {
-            // Re-fetch the page content on each retry to get the latest DOM state
-            const currentResponse = await fetch(url, { signal: controller.signal });
-            const currentText = await currentResponse.text();
-            const currentDoc = parser.parseFromString(currentText, 'text/html');
-            const fullText = currentDoc.body ? currentDoc.body.innerText : "";
-            
-            // Helper to find value following a label in Telebirr's table-heavy layout
-            const findValue = (label) => {
-                const regex = new RegExp(`${label}\\s*[:]?\\s*([^\\n\\r]+)`, 'i');
-                const match = fullText.match(regex);
-                return match ? match[1].trim() : null;
+            const timeout = setTimeout(() => {
+                chrome.runtime.onMessage.removeListener(messageListener);
+                if (iframe.parentNode) document.body.removeChild(iframe);
+                resolve({ error: "Telebirr verification timed out (30s)" });
+            }, 30000);
+
+            const messageListener = (msg) => {
+                if (msg.action === 'telebirr_data_extracted' && msg.url === url) {
+                    clearTimeout(timeout);
+                    chrome.runtime.onMessage.removeListener(messageListener);
+                    if (iframe.parentNode) document.body.removeChild(iframe);
+                    resolve(msg.data);
+                }
             };
 
-            // Telebirr specific mapping
-            const recipient = findValue("Credited Party name") || findValue("የገንዘብ ተቀባይ ስም");
-            const amount = findValue("Settled Amount") || findValue("የተከፈለው መጠን");
-            const date = findValue("Transaction Date") || findValue("የግብይት ቀን");
-            const senderName = findValue("Payer Name") || findValue("የከፋይ ስም");
-            const senderPhone = findValue("Payer Number") || findValue("የከፋይ ስልክ ቁጥር");
-
-            if (recipient && amount) {
-                // Data found, return immediately
-                return {
-                    recipient,
-                    senderName,
-                    senderPhone,
-                    date,
-                    amount,
-                    reason: findValue("Remark") || ""
-                };
-            }
-            console.log(`[Offscreen] Telebirr data not found, retrying... (${i + 1}/${MAX_RETRIES})`);
-            await sleep(RETRY_DELAY_MS); // Wait before retrying
-        }
-        // If loop finishes, data was not found after all retries
-        return { error: "Failed to locate Telebirr data after multiple retries. Page might be empty or layout changed." };
+            chrome.runtime.onMessage.addListener(messageListener);
+            document.body.appendChild(iframe);
+        });
     }
 
     // --- Default Ebirr Logic ---

@@ -287,13 +287,13 @@ export function showRandomReviewModal(html, mgmtTabId, rowId, extractedId, imgUr
         } else {
           const manId = await showCustomPrompt(manualHtml);
           if (manId) {
-            chrome.runtime.sendMessage({ action: "manualIdEntry", id: manId.replace(/\D/g, ''), amount: amt });
+            chrome.runtime.sendMessage({ action: "manualIdEntry", id: manId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(), amount: amt });
           }
         }
       } else if (mode === 'manual') {
         const manId = await showCustomPrompt(manualHtml);
         if (manId) {
-          chrome.runtime.sendMessage({ action: "manualIdEntry", id: manId.replace(/\D/g, ''), amount: amt });
+          chrome.runtime.sendMessage({ action: "manualIdEntry", id: manId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(), amount: amt });
         }
       }
     }

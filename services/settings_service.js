@@ -51,13 +51,21 @@ export const initSettings = async () => {
 };
 
 export function isValidIdFormat(id) {
+    console.log(`[SettingsService] Validating ID: "${id}"`);
+    
     if (!id || typeof id !== 'string' || !/^[A-Za-z0-9]+$/.test(id)) {
+        console.warn(`[SettingsService] ID failed alphanumeric/existence check: "${id}"`);
         return false;
     }
+
     const banks = settingsCache.banks || DEFAULT_BANKS;
     const matchedBank = banks.find(b => 
       id.length === parseInt(b.length) && 
       b.prefixes.some(prefix => id.startsWith(prefix))
     );
+
+    if (matchedBank) console.log(`[SettingsService] ID "${id}" matched bank: ${matchedBank.name}`);
+    else console.warn(`[SettingsService] ID "${id}" did not match any configured bank formats.`);
+
     return !!matchedBank;
 }
