@@ -373,6 +373,12 @@ export class DomManager {
         const modal = modalElement || document.querySelector(SELECTORS.modal);
         if (!modal || modal.offsetParent === null) return;
 
+        // Align input groups vertically to accommodate the quick action buttons
+        modal.querySelectorAll('.input-group').forEach(group => {
+            group.style.setProperty('display', 'flex', 'important');
+            group.style.setProperty('flex-direction', 'column', 'important');
+        });
+
         const inputComment = modal.querySelector(SELECTORS.modalInputComment);
         if (!inputComment || !inputComment.parentNode) return;
 
@@ -402,6 +408,10 @@ export class DomManager {
                 e.preventDefault();
                 inputComment.value = act.label;
                 inputComment.dispatchEvent(new Event('input'));
+                const submitBtn = modal.querySelector(SELECTORS.modalBtnConfirm);
+                if (submitBtn) {
+                    safeClick(submitBtn);
+                }
             };
             actionContainer.appendChild(btn);
         });
