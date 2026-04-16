@@ -1,11 +1,12 @@
 // c:\Users\BT\Desktop\Venv\zOther\Ebirr_Chrome_Verifier\ui\popup\dashboard_ui.js
-import { getRecentTransactions, getTransactionsForDate, getUserTransactionsForDate, onDailyStatsUpdate, onUserDailyStatsUpdate, onRecentTransactionsUpdate } from '../../services/storage_service.js';
+import { getRecentTransactions, getTransactionsForDate, getUserTransactionsForDate, onDailyStatsUpdate, onUserDailyStatsUpdate, onRecentTransactionsUpdate, onLastMarkedUpdate } from '../../services/storage_service.js';
 import { renderChart, renderHourlyChart, renderBankChart, initSpeedChart, renderSpeedChart } from './charts.js';
 
 export class DashboardUI {
     constructor() {
         this.unsubscribeDailyStats = null;
         this.unsubscribeRecentTx = null;
+        this.unsubscribeLastMarked = null;
         this.currentScope = 'my';
         this.hasLoaded = false;
         
@@ -60,6 +61,31 @@ export class DashboardUI {
         
         this.unsubscribeRecentTx = onRecentTransactionsUpdate(5, (liveTransactions) => this.renderRecent(liveTransactions));
         
+        // Global listener for the last portal ID marked by anyone on the team
+        this.unsubscribeLastMarked = onLastMarkedUpdate((data) => {
+            const idEl = document.getElementById('last-marked-id');
+            const userEl = document.getElementById('last-marked-user');
+            const container = document.getElementById('last-marked-container');
+            
+            if (data && data.lastPortalId) {
+                if (idEl) idEl.innerText = data.lastPortalId;
+                if (userEl) userEl.innerText = data.user ? data.user.split('@')[0] : 'System';
+                
+                if (container) {
+                    container.onclick = () => {
+                        navigator.clipboard.writeText(data.lastPortalId);
+                        const originalColor = idEl.style.color;
+                        idEl.style.color = "#10b981";
+                        idEl.innerText = "COPIED!";
+                        setTimeout(() => {
+                            idEl.style.color = originalColor;
+                            idEl.innerText = data.lastPortalId;
+                        }, 1000);
+                    };
+                }
+            }
+        });
+
         this.hasLoaded = true;
     }
 
@@ -152,5 +178,6 @@ export class DashboardUI {
     cleanup() {
         if (this.unsubscribeDailyStats) this.unsubscribeDailyStats();
         if (this.unsubscribeRecentTx) this.unsubscribeRecentTx();
+        if (this.unsubscribeLastMarked) this.unsubscribeLastMarked();
     }
 }

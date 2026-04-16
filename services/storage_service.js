@@ -6,6 +6,8 @@ import { isRetryableStatus, parseBankDate } from '../utils/helpers.js';
 // Collection Names
 const COL_TX = "transactions";
 const COL_STATS = "daily_stats";
+const COL_METADATA = "metadata";
+const DOC_LAST_ACTIVITY = "last_activity";
 
 /**
  * Centralized function to build and log a complete transaction record.
@@ -14,8 +16,9 @@ const COL_STATS = "daily_stats";
  * @param {object} verificationResult - The result from `verifyTransactionData` or a similar structure.
  * @param {object|null} [existingTx=null] - The existing transaction from DB if it's a repeat.
  * @param {string|null} [originalId=null] - The AI-extracted ID, if the final ID is a 'RANDOM' key.
+ * @param {string|null} [portalId=null] - The internal portal/management ID of the transaction.
  */
-export async function logTransactionResult(id, verificationResult, existingTx = null, originalId = null) {
+export async function logTransactionResult(id, verificationResult, existingTx = null, originalId = null, portalId = null) {
     await ensureAuthReady();
     if (!auth.currentUser) return;
 
@@ -63,6 +66,33 @@ export async function logTransactionResult(id, verificationResult, existingTx = 
 
     await saveTransaction(id, payload);
     await updateDailyStats(isSuccess, verificationResult.foundAmt || 0);
+
+    // Update the global "Last Marked" portal ID for the team
+    if (portalId) {
+        await updateLastActivity(portalId);
+    }
+}
+
+export async function updateLastActivity(portalId) {
+    await ensureAuthReady();
+    if (!auth.currentUser || !portalId) return;
+
+    const now = Date.now();
+    await setDoc(doc(db, COL_METADATA, DOC_LAST_ACTIVITY), {
+        lastPortalId: portalId,
+        timestamp: now,
+        user: auth.currentUser.email
+    }, { merge: true });
+}
+
+export function onLastMarkedUpdate(callback) {
+    if (!auth.currentUser) return () => {};
+    const docRef = doc(db, COL_METADATA, DOC_LAST_ACTIVITY);
+    return onSnapshot(docRef, (docSnap) => {
+        if (docSnap.exists()) {
+            callback(docSnap.data());
+        }
+    }, (error) => console.error("onLastMarkedUpdate error:", error));
 }
 
 export async function updateDailyStats(isSuccess, amount) {

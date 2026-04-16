@@ -9,7 +9,7 @@ import { getMimeTypeFromDataUrl, getTimeAgo } from '../../utils/helpers.js';
 import { auth } from '../../services/firebase_config.js';
 
 export async function handleIntegrationVerify(request, tabId) {
-  const { src, amount, rowId, dataUrl } = request;
+  const { src, amount, rowId, dataUrl, portalId } = request;
   const updateStatus = (msg) => chrome.tabs.sendMessage(tabId, { action: "updateStatus", message: msg, rowId }).catch(() => {});
   
   let extractedId = null;
@@ -26,7 +26,7 @@ export async function handleIntegrationVerify(request, tabId) {
             status: "PDF",
             foundAmt: amount,
         };
-        await logTransactionResult(pdfKey, verificationResult, null, "PDF");
+        await logTransactionResult(pdfKey, verificationResult, null, "PDF", portalId);
 
              // Fallback to manual review if no ID found in PDF
              chrome.tabs.sendMessage(tabId, {
@@ -122,7 +122,7 @@ export async function handleIntegrationVerify(request, tabId) {
           status: "Random",
           foundAmt: amount, // Log the expected amount as there's no found amount
       };
-      await logTransactionResult(randomKey, verificationResult, null, "ERROR");
+      await logTransactionResult(randomKey, verificationResult, null, "ERROR", portalId);
       
       chrome.tabs.sendMessage(tabId, {
         action: "integrationResult",
@@ -157,7 +157,7 @@ export async function handleIntegrationVerify(request, tabId) {
           foundAmt: amount,
           bankCheckResult: "No Matching Bank"
       };
-      await logTransactionResult(randomKey, verificationResult, null, extractedId);
+      await logTransactionResult(randomKey, verificationResult, null, extractedId, portalId);
       
       chrome.tabs.sendMessage(tabId, {
         action: "integrationResult",
@@ -222,7 +222,7 @@ export async function handleIntegrationVerify(request, tabId) {
                 status: effectiveStatus,
                 foundAmt: old.amount,
             };
-            await logTransactionResult(extractedId, repeatResult, old);
+            await logTransactionResult(extractedId, repeatResult, old, null, portalId);
 
             chrome.tabs.sendMessage(tabId, {
                 action: "integrationResult",
@@ -303,7 +303,7 @@ export async function handleIntegrationVerify(request, tabId) {
               id: extractedId,
               processedBy: auth.currentUser ? auth.currentUser.email : "System"
           };
-          await logTransactionResult(extractedId, { ...result, foundAmt: 0 }, old);
+          await logTransactionResult(extractedId, { ...result, foundAmt: 0 }, old, null, portalId);
 
           chrome.tabs.sendMessage(tabId, {
             action: "integrationResult",
@@ -327,7 +327,7 @@ export async function handleIntegrationVerify(request, tabId) {
 
       if (result.status.startsWith("AA")) result.color = "#3b82f6";
 
-      await logTransactionResult(extractedId, result, old);
+      await logTransactionResult(extractedId, result, old, null, portalId);
 
       chrome.tabs.sendMessage(tabId, {
         action: "integrationResult",
@@ -350,7 +350,7 @@ export async function handleIntegrationVerify(request, tabId) {
 }
 
 export async function handleMultiIntegrationVerify(request, tabId) {
-    const { images, amount, rowId, primaryUrl } = request;
+    const { images, amount, rowId, primaryUrl, portalId } = request;
     const updateStatus = (msg) => chrome.tabs.sendMessage(tabId, { action: "updateStatus", message: msg, rowId }).catch(() => {});
 
     if (images.length > 1) updateStatus(`Processing ${images.length} Image(s)...`);
@@ -478,7 +478,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                         // It's a complete repeat. Log and continue.
                         old.repeatCount = (old.repeatCount || 0) + 1;
                         old.lastRepeat = Date.now();
-                        await logTransactionResult(finalId, { status: "Repeat", foundAmt: old.amount }, old);
+                        await logTransactionResult(finalId, { status: "Repeat", foundAmt: old.amount }, old, null, portalId);
                         errors.push(`ID : Duplicate / Repeat`);
                         maxRepeatCount = Math.max(maxRepeatCount, old.repeatCount);
                         if (!duplicateTransaction) duplicateTransaction = old;
@@ -613,7 +613,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                 bankDate: failedTransaction.bankDate
             };
             // Log the failed transaction.
-            await logTransactionResult(failedTransaction.id, failureResult, failedTransaction.existingTx);
+            await logTransactionResult(failedTransaction.id, failureResult, failedTransaction.existingTx, null, portalId);
 
             finalStatus = failedTransaction.status;
             statusText = failedTransaction.statusText;
@@ -665,7 +665,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                 status: "Random",
                 foundAmt: amount,
             };
-            await logTransactionResult(randomKey, randomResult, null, originalId);
+            await logTransactionResult(randomKey, randomResult, null, originalId, portalId);
             finalStatus = "Random";
         }
 
@@ -696,7 +696,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
     // 3. Save Valid Transactions & Determine Status
     for (const tx of validTransactions) {
         const verificationResult = { status: "Verified", foundAmt: tx.amount, senderName: tx.data.senderName, senderPhone: tx.data.senderPhone, foundName: tx.data.recipient, timeStr: tx.timeStr, bankDate: tx.data.date };
-        await logTransactionResult(tx.id, verificationResult, tx.existingTx);
+        await logTransactionResult(tx.id, verificationResult, tx.existingTx, null, portalId);
     }
 
     let finalStatus = "Verified";

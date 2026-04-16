@@ -2,6 +2,7 @@
 import { handleStartAI, handleManualId, handleProcessedId, handleScreenshotFlow, openAndVerifyFullData } from './context_menu_controller.js';
 import { handleIntegrationVerify, handleMultiIntegrationVerify } from './integration_controller.js';
 import { handlePdfCapture } from '../../services/pdf_service.js';
+import { updateLastActivity } from '../../services/storage_service.js';
 import { callAIVisionWithRetry } from '../../services/ai_service.js';
 import { isValidIdFormat } from '../../services/settings_service.js';
 import { setupOffscreenDocument } from '../../services/offscreen_service.js';
@@ -141,6 +142,10 @@ export function routeMessage(request, sender, sendResponse) {
     case "capturePdf":
       handlePdfCapture(request.url).then(dataUrls => sendResponse({ dataUrls })).catch(err => sendResponse({ error: err.message }));
       return true;
+
+    case "updateLastActivity":
+      updateLastActivity(request.portalId);
+      break;
 
     case "confirmRandomReject":
       chrome.tabs.remove(sender.tab.id);

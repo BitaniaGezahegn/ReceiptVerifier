@@ -263,6 +263,11 @@ export class BatchProcessor {
         // Auto-scroll to ensure visibility
         this.domManager.scrollToRow(row);
 
+        const portalId = this.domManager.getTxId(row);
+        if (portalId) {
+            chrome.runtime.sendMessage({ action: "updateLastActivity", portalId: portalId });
+        }
+        
         const amountSpan = row.querySelector(SELECTORS.amount);
         if (!amountSpan) { alert("Error: Could not find amount."); return; }
 
@@ -363,7 +368,8 @@ export class BatchProcessor {
                     images: images,
                     amount: amount,
                     rowId: rowId,
-                    primaryUrl: imgUrl
+                    primaryUrl: imgUrl,
+                    portalId: portalId
                 }, (response) => {
                     if (chrome.runtime.lastError && chrome.runtime.lastError.message.includes("Extension context invalidated")) {
                         this.handleExtensionInvalidated();
