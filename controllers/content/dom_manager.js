@@ -20,6 +20,8 @@ export class DomManager {
         this.rowPollMs = 500;
         this.pendingAlertSettings = { enabled: false, limit: 5, lastAlert: 0 };
         this.buttonState = { isRunning: false, isAuto: false, count: 0 };
+        this.flaggedMap = {};
+        this.onFlagCallback = null;
     }
 
     updateSettings(speedConfig, pendingSettings) {
@@ -51,27 +53,29 @@ export class DomManager {
     }
 
     scanAndInject(verificationState, flaggedMap, callbacks) {
+        this.flaggedMap = flaggedMap;
+        if (callbacks.onFlag) this.onFlagCallback = callbacks.onFlag;
+
         this.checkPendingRequests();
         this.injectBatchControls(callbacks.onBatchToggle, callbacks.onRejectAll);
 
         const rows = document.querySelectorAll(SELECTORS.row);
         rows.forEach((row) => {
             const firstCell = row.querySelector('td:first-child');
-            if (firstCell && !firstCell.querySelector('.ebirr-flag-btn')) {
+            if (firstCell) {
                 this.injectClearCacheButton(firstCell, callbacks.onClearCache);
-
-                const txId = this.getTxIdFromCell(firstCell);
-                if (txId && /^\d+$/.test(txId)) {
-                    const existingBtn = firstCell.querySelector('.ebirr-flag-btn');
-                    if (!existingBtn) {
-                        this.injectFlagButton(firstCell, row, txId, !!flaggedMap[txId], callbacks.onFlag);
-                    } else {
-                        this.updateFlagStyle(existingBtn, row, !!flaggedMap[txId]);
-                    }
-                }
             }
 
-            if (row.classList.contains('table-head') || row.dataset.ebirrInjected) return;
+            if (row.classList.contains('table-head')) return;
+
+            if (row.dataset.ebirrInjected) {
+                const txId = this.getTxId(row);
+                const flagBtn = row.querySelector('.ebirr-flag-btn');
+                if (flagBtn && txId) {
+                    this.updateFlagStyle(flagBtn, row, !!this.flaggedMap[txId]);
+                }
+                return;
+            }
             
             const imgLink = row.querySelector(SELECTORS.imageLink);
             if (!imgLink || !imgLink.href || !imgLink.href.startsWith('http')) return;
@@ -180,7 +184,8 @@ export class DomManager {
 
             await chrome.storage.local.set({ [FLAGGED_STORAGE_KEY]: map });
             this.updateFlagStyle(btn, row, newState);
-            if (newState && onFlag) onFlag(txId);
+                const finalOnFlag = onFlag || this.onFlagCallback;
+                if (newState && finalOnFlag) finalOnFlag(txId);
         };
 
         cell.appendChild(btn);
@@ -330,7 +335,7 @@ export class DomManager {
         if (!container) {
             container = document.createElement('div');
             container.className = 'ebirr-controller';
-            container.style.cssText = "display:inline-block; margin-left:5px; vertical-align:middle;";
+            container.style.cssText = "display:inline-flex; align-items:center; gap:8px; margin-left:5px; vertical-align:middle;";
             confirmTd.appendChild(container);
         }
         container.innerHTML = '';
@@ -349,6 +354,12 @@ export class DomManager {
             btn.style.cssText = "padding: 2px 8px; font-size: 11px; background-color: #3b82f6; border: none; color: white; border-radius: 3px; cursor: pointer;";
             btn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); callbacks.onVerify(row, imgUrl); };
             container.appendChild(btn);
+        }
+
+        // Inject Flag Button next to Verify/Cancel
+        const txId = this.getTxId(row);
+        if (txId && /^\d+$/.test(txId)) {
+            this.injectFlagButton(container, row, txId, !!this.flaggedMap[txId], callbacks.onFlag || this.onFlagCallback);
         }
     }
 

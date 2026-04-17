@@ -264,10 +264,6 @@ export class BatchProcessor {
         this.domManager.scrollToRow(row);
 
         const portalId = this.domManager.getTxId(row);
-        if (portalId) {
-            chrome.runtime.sendMessage({ action: "updateLastActivity", portalId: portalId });
-        }
-
         const amountSpan = row.querySelector(SELECTORS.amount);
         if (!amountSpan) { alert("Error: Could not find amount."); return; }
 
