@@ -120,6 +120,9 @@ async function scanAndInject() {
                 } else {
                     currentMap[txId] = true; // Flag
                     updateFlagStyle(flagSpan, row, true);
+
+                    // Update the global "Last Marked" portal ID for the team
+                    chrome.runtime.sendMessage({ action: "updateLastActivity", portalId: txId });
                 }
                 
                 await chrome.storage.local.set({ [STORAGE_KEY]: currentMap });

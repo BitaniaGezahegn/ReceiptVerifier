@@ -6,6 +6,8 @@ import { safeClick } from './utils/helpers.js';
 const domManager = new DomManager();
 const batchProcessor = new BatchProcessor(domManager);
 
+let flaggedMapCache = {};
+
 async function init() {
     console.log("Ebirr Verifier: Integration loaded.");
     
@@ -14,8 +16,10 @@ async function init() {
         'pendingAlertEnabled', 'pendingLimit', 'batchReverse', 'transactionSoundEnabled', 
         'skipPdfEnabled', 'skipRandomEnabled', 'skipRepeatEnabled', 'repeatLimit', 
         'retryWrongRecipient', 'retryVerified', 'fullAutoMode', 'autoRefreshInterval', 'processingSpeed',
-        'telegramPendingAlert'
+        'telegramPendingAlert', 'ebirr_flagged_ids'
     ]);
+
+    flaggedMapCache = result.ebirr_flagged_ids || {};
 
     const settings = {
         batchReverse: result.batchReverse || false,
@@ -42,12 +46,13 @@ async function init() {
 
     // 2. Initial Scan
     domManager.getColumnIndexes();
-    domManager.scanAndInject(batchProcessor.verificationState, {
+    domManager.scanAndInject(batchProcessor.verificationState, flaggedMapCache, {
         onVerify: (row, url) => batchProcessor.startVerification(row, url),
         onCancel: (url) => batchProcessor.cancelVerification(url),
         onBatchToggle: (btn) => batchProcessor.toggleBatch(btn),
         onRejectAll: () => batchProcessor.showRejectOptions(),
-        onClearCache: (txId) => batchProcessor.clearCacheForTx(txId)
+        onClearCache: (txId) => batchProcessor.clearCacheForTx(txId),
+        onFlag: (txId) => chrome.runtime.sendMessage({ action: "updateLastActivity", portalId: txId })
     });
     batchProcessor.restoreAllRows();
     batchProcessor.checkPendingAlert();
@@ -55,12 +60,13 @@ async function init() {
     // 3. Watch for dynamic content (SPA)
     const observer = new MutationObserver((mutations) => {
         domManager.getColumnIndexes();
-        domManager.scanAndInject(batchProcessor.verificationState, {
+        domManager.scanAndInject(batchProcessor.verificationState, flaggedMapCache, {
             onVerify: (row, url) => batchProcessor.startVerification(row, url),
             onCancel: (url) => batchProcessor.cancelVerification(url),
             onBatchToggle: (btn) => batchProcessor.toggleBatch(btn),
             onRejectAll: () => batchProcessor.showRejectOptions(),
-            onClearCache: (txId) => batchProcessor.clearCacheForTx(txId)
+            onClearCache: (txId) => batchProcessor.clearCacheForTx(txId),
+            onFlag: (txId) => chrome.runtime.sendMessage({ action: "updateLastActivity", portalId: txId })
         });
         batchProcessor.restoreAllRows();
         batchProcessor.checkPendingAlert();
@@ -71,6 +77,10 @@ async function init() {
     // 4. Listeners
     chrome.runtime.onMessage.addListener(handleBackgroundMessage);
     chrome.storage.onChanged.addListener((changes) => {
+        if (changes.ebirr_flagged_ids) {
+            flaggedMapCache = changes.ebirr_flagged_ids.newValue || {};
+        }
+
         const newSettings = {};
         if (changes.batchReverse) newSettings.batchReverse = changes.batchReverse.newValue;
         if (changes.transactionSoundEnabled) newSettings.transactionSoundEnabled = changes.transactionSoundEnabled.newValue;

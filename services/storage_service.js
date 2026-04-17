@@ -66,11 +66,6 @@ export async function logTransactionResult(id, verificationResult, existingTx = 
 
     await saveTransaction(id, payload);
     await updateDailyStats(isSuccess, verificationResult.foundAmt || 0);
-
-    // Update the global "Last Marked" portal ID for the team
-    if (portalId) {
-        await updateLastActivity(portalId);
-    }
 }
 
 export async function updateLastActivity(portalId) {

@@ -4,6 +4,14 @@ import { safeClick } from '../../utils/helpers.js';
 import { showNotification } from '../../ui/content/notifications.js';
 import { playAlertSound } from '../../services/sound_service.js';
 
+const FLAG_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
+  <line x1="4" y1="22" x2="4" y2="15"></line>
+</svg>
+`;
+const FLAGGED_STORAGE_KEY = 'ebirr_flagged_ids';
+
 export class DomManager {
     constructor() {
         this.columnIndexes = {};
@@ -42,15 +50,25 @@ export class DomManager {
         }
     }
 
-    scanAndInject(verificationState, callbacks) {
+    scanAndInject(verificationState, flaggedMap, callbacks) {
         this.checkPendingRequests();
         this.injectBatchControls(callbacks.onBatchToggle, callbacks.onRejectAll);
 
         const rows = document.querySelectorAll(SELECTORS.row);
         rows.forEach((row) => {
             const firstCell = row.querySelector('td:first-child');
-            if (firstCell) {
+            if (firstCell && !firstCell.querySelector('.ebirr-flag-btn')) {
                 this.injectClearCacheButton(firstCell, callbacks.onClearCache);
+
+                const txId = this.getTxIdFromCell(firstCell);
+                if (txId && /^\d+$/.test(txId)) {
+                    const existingBtn = firstCell.querySelector('.ebirr-flag-btn');
+                    if (!existingBtn) {
+                        this.injectFlagButton(firstCell, row, txId, !!flaggedMap[txId], callbacks.onFlag);
+                    } else {
+                        this.updateFlagStyle(existingBtn, row, !!flaggedMap[txId]);
+                    }
+                }
             }
 
             if (row.classList.contains('table-head') || row.dataset.ebirrInjected) return;
@@ -140,6 +158,46 @@ export class DomManager {
         };
 
         cell.appendChild(btn);
+    }
+
+    injectFlagButton(cell, row, txId, isInitiallyFlagged, onFlag) {
+        const btn = document.createElement('span');
+        btn.className = 'ebirr-flag-btn';
+        btn.innerHTML = FLAG_SVG;
+        btn.title = "Mark current position (Sync to team)";
+        btn.style.cssText = "cursor:pointer; font-size:12px; margin-left:8px; opacity:0.6; transition: all 0.2s; user-select:none; vertical-align:middle; display:inline-flex; align-items:center;";
+        
+        this.updateFlagStyle(btn, row, isInitiallyFlagged);
+
+        btn.onclick = async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const current = await chrome.storage.local.get([FLAGGED_STORAGE_KEY]);
+            const map = current[FLAGGED_STORAGE_KEY] || {};
+            const newState = !map[txId];
+            if (newState) map[txId] = true; else delete map[txId];
+
+            await chrome.storage.local.set({ [FLAGGED_STORAGE_KEY]: map });
+            this.updateFlagStyle(btn, row, newState);
+            if (newState && onFlag) onFlag(txId);
+        };
+
+        cell.appendChild(btn);
+    }
+
+    updateFlagStyle(btn, row, isFlagged) {
+        if (isFlagged) {
+            btn.style.color = "#ef4444";
+            btn.style.opacity = "1";
+            btn.querySelector('svg').setAttribute('fill', 'currentColor');
+            if (row) row.style.backgroundColor = "#2a0a0a";
+        } else {
+            btn.style.color = "#94a3b8";
+            btn.style.opacity = "0.6";
+            btn.querySelector('svg').setAttribute('fill', 'none');
+            if (row) row.style.backgroundColor = "";
+        }
     }
 
     getTxIdFromCell(cell) {
