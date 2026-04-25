@@ -569,7 +569,6 @@ export class BatchProcessor {
                         delete row.dataset.ebirrSkipped;
                         this.startVerification(row, request.imgUrl);
                     };
-                    this.attachTooltip(btn, result);
                     container.appendChild(btn);
                  }
             }
@@ -600,17 +599,18 @@ export class BatchProcessor {
                     const btn = document.createElement('button');
                     btn.className = 'btn btn-danger btn-xs';
                     btn.style.cssText = `padding: 2px 8px; font-size: 11px; background-color: ${result.color || '#9ca3af'}; border: none; color: white; border-radius: 3px; cursor: pointer;`;
-                    btn.innerText = "Reject Skipped";
+                 btn.innerText = "Reject Skipped"; // Hold Ctrl for auto-repeat
+                 this.addCtrlBehavior(btn);
                     btn.onclick = (e) => {
                         e.preventDefault();
                         e.stopPropagation();
+                     const autoRepeat = e.ctrlKey;
                         const rejectLink = this.domManager.columnIndexes.reject ? row.querySelector(`td:nth-child(${this.domManager.columnIndexes.reject}) a`) : null;
                         if (rejectLink) {
                             safeClick(rejectLink);
-                            this.domManager.waitForModalAndFill(result, 'reject', request.imgUrl, request.extractedId, true);
+                         this.domManager.waitForModalAndFill(result, 'reject', request.imgUrl, request.extractedId, true, autoRepeat);
                         }
                     };
-                    this.attachTooltip(btn, result);
                     container.appendChild(btn);
                  }
             }
@@ -663,18 +663,18 @@ export class BatchProcessor {
                         const btn = document.createElement('button');
                         btn.className = 'btn btn-danger btn-xs';
                         btn.style.cssText = "padding: 2px 8px; font-size: 11px; background-color: #ef4444; border: none; color: white; border-radius: 3px; cursor: pointer;";
-                        btn.innerText = "Reject Random";
+                     btn.innerText = "Reject Random"; // Hold Ctrl for auto-repeat
                         btn.onclick = (e) => {
                             e.preventDefault();
                             e.stopPropagation();
+                         const autoRepeat = e.ctrlKey;
                             const rejectLink = this.domManager.columnIndexes.reject ? row.querySelector(`td:nth-child(${this.domManager.columnIndexes.reject}) a`) : null;
                             if (rejectLink) {
                                 safeClick(rejectLink);
-                                this.domManager.waitForModalAndFill(result, 'reject', request.imgUrl, request.extractedId, true);
+                             this.domManager.waitForModalAndFill(result, 'reject', request.imgUrl, request.extractedId, true, autoRepeat);
                             }
                         };
                         this.saveRowState(row, result, "Reject Random");
-                        this.attachTooltip(btn, result);
                         container.appendChild(btn);
                      }
                  }
@@ -722,18 +722,18 @@ export class BatchProcessor {
                         const btn = document.createElement('button');
                         btn.className = 'btn btn-warning btn-xs';
                         btn.style.cssText = "padding: 2px 8px; font-size: 11px; background-color: #f59e0b; border: none; color: white; border-radius: 3px; cursor: pointer;";
-                        btn.innerText = `Reject Repeat (${result.repeatCount})`;
+                        btn.innerText = `Reject Repeat (${result.repeatCount})`; // Hold Ctrl for auto-repeat
                         btn.onclick = (e) => {
                             e.preventDefault();
                             e.stopPropagation();
+                            const autoRepeat = e.ctrlKey;
                             const rejectLink = this.domManager.columnIndexes.reject ? row.querySelector(`td:nth-child(${this.domManager.columnIndexes.reject}) a`) : null;
                             if (rejectLink) {
                                 safeClick(rejectLink);
-                                this.domManager.waitForModalAndFill(result, 'reject', request.imgUrl, request.extractedId, true);
+                                this.domManager.waitForModalAndFill(result, 'reject', request.imgUrl, request.extractedId, true, autoRepeat);
                             }
                         };
                         this.saveRowState(row, result, `Reject Repeat (${result.repeatCount})`);
-                        this.attachTooltip(btn, result);
                         container.appendChild(btn);
                      }
                  }
@@ -960,10 +960,6 @@ export class BatchProcessor {
                 if (container) {
                     row.dataset.ebirrSkipped = "true";
                     
-                    // Safety: Remove any open tooltip to prevent orphans when replacing the element
-                    const existingTooltip = document.getElementById('ebirr-tooltip-popup');
-                    if (existingTooltip) existingTooltip.remove();
-                    
                     if (data.buttonLabel) {
                          container.innerHTML = '';
                          const btn = document.createElement('button');
@@ -993,15 +989,16 @@ export class BatchProcessor {
                              btn.onclick = (e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
+                                const autoRepeat = e.ctrlKey;
                                 const rejectLink = this.domManager.columnIndexes.reject ? row.querySelector(`td:nth-child(${this.domManager.columnIndexes.reject}) a`) : null;
                                 if (rejectLink) {
                                     safeClick(rejectLink);
-                                    this.domManager.waitForModalAndFill(data, 'reject', null, data.id, true);
+                                    this.domManager.waitForModalAndFill(data, 'reject', null, data.id, true, autoRepeat);
                                 }
                              };
                          }
                          
-                         this.attachTooltip(btn, data);
+                         this.addCtrlBehavior(btn);
                          container.appendChild(btn);
                          return;
                     }
@@ -1013,7 +1010,6 @@ export class BatchProcessor {
                     const span = document.createElement('span');
                     span.style.cssText = `color:${color}; font-weight:bold; font-size:11px; cursor:help;`;
                     span.innerText = text;
-                    this.attachTooltip(span, data);
                     container.appendChild(span);
                 }
             } catch (e) {
@@ -1040,76 +1036,43 @@ export class BatchProcessor {
         }
     }
 
-    attachTooltip(element, data) {
-        let activeTooltip = null;
+    hookNativeReject(link, row) {
+        const txId = this.domManager.getTxId(row);
+        const cached = localStorage.getItem(`ebirr_cache_${txId}`);
+        
+        // Use cached data if available, otherwise use a default "Repeat" payload
+        let data = cached ? JSON.parse(cached) : { 
+            status: "Repeat", 
+            id: txId, 
+            color: "#f59e0b", 
+            statusText: "🔁 REPEAT / DUPLICATE",
+            repeatCount: 0 
+        };
 
-        element.addEventListener('mouseenter', () => {
-            const existing = document.getElementById('ebirr-tooltip-popup');
-            if (existing) existing.remove();
+        this.addCtrlBehavior(link);
 
-            const tooltip = document.createElement('div');
-            tooltip.id = 'ebirr-tooltip-popup';
-            tooltip.style.cssText = `
-                position: absolute;
-                background: rgba(15, 23, 42, 0.95);
-                color: #e2e8f0;
-                padding: 8px 12px;
-                border-radius: 8px;
-                font-size: 11px;
-                font-family: 'Segoe UI', sans-serif;
-                z-index: 2147483647;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-                border: 1px solid #334155;
-                pointer-events: none;
-                white-space: nowrap;
-                line-height: 1.5;
-                backdrop-filter: blur(4px);
-            `;
-            
-            let content = `<div style="font-weight:700; color:${data.color || '#fff'}; margin-bottom:6px; border-bottom: 1px solid #334155; padding-bottom: 6px; font-size:12px;">${data.statusText || data.status}</div>`;
-            
-            const fields = [
-                { label: 'Transaction ID', val: data.id },
-                { label: 'Original', val: data.originalStatus },
-                { label: 'Amount', val: data.foundAmt },
-                { label: 'Sender', val: data.senderName },
-                { label: 'Recipient', val: data.foundName },
-                { label: 'Time', val: data.timeStr },
-                { label: 'Repeats', val: data.repeatCount },
-                { label: 'Bank Result', val: data.bankCheckResult },
-                { label: 'Processed By', val: data.processedBy }
-            ];
-
-            content += '<table style="border-collapse: collapse; width: 100%;">';
-            fields.forEach(f => {
-                if (f.val !== undefined && f.val !== null && f.val !== '-' && f.val !== 'N/A' && f.val !== 0) {
-                    content += `<tr><td style="color:#94a3b8; padding-right:12px; padding-bottom:2px;">${f.label}:</td><td style="color:#f1f5f9; padding-bottom:2px;">${f.val}</td></tr>`;
-                }
-            });
-            content += '</table>';
-            
-            tooltip.innerHTML = content;
-            document.body.appendChild(tooltip);
-            activeTooltip = tooltip;
-            
-            const rect = element.getBoundingClientRect();
-            tooltip.style.top = `${rect.bottom + window.scrollY + 6}px`;
-            tooltip.style.left = `${rect.left + window.scrollX + (rect.width / 2)}px`;
-            tooltip.style.transform = 'translateX(-50%)';
+        link.addEventListener('click', (e) => {
+            if (e.ctrlKey) {
+                e.preventDefault();
+                e.stopPropagation();
+                // Trigger the portal's modal first
+                safeClick(link);
+                // Instruct the manager to auto-fill and click "Repeat"
+                this.domManager.waitForModalAndFill(data, 'reject', null, txId, true, true);
+            }
         });
+    }
 
+    addCtrlBehavior(element) {
+        const updateBtn = (e) => {
+            if (element.matches(':hover')) {
+                element.style.color = e.ctrlKey ? "#f59e0b" : "";
+            }
+        };
+        window.addEventListener('keydown', updateBtn);
+        window.addEventListener('keyup', updateBtn);
         element.addEventListener('mouseleave', () => {
-            if (activeTooltip) {
-                activeTooltip.remove();
-                activeTooltip = null;
-            }
-        });
-
-        element.addEventListener('mousedown', () => {
-            if (activeTooltip) {
-                activeTooltip.remove();
-                activeTooltip = null;
-            }
+            element.style.color = "";
         });
     }
 }

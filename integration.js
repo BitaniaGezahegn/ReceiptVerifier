@@ -52,7 +52,8 @@ async function init() {
         onBatchToggle: (btn) => batchProcessor.toggleBatch(btn),
         onRejectAll: () => batchProcessor.showRejectOptions(),
         onClearCache: (txId) => batchProcessor.clearCacheForTx(txId),
-        onFlag: (txId) => chrome.runtime.sendMessage({ action: "updateLastActivity", portalId: txId })
+        onFlag: (txId) => chrome.runtime.sendMessage({ action: "updateLastActivity", portalId: txId }),
+        onHookNativeReject: (link, row) => batchProcessor.hookNativeReject(link, row)
     });
     batchProcessor.restoreAllRows();
     batchProcessor.checkPendingAlert();
@@ -66,7 +67,8 @@ async function init() {
             onBatchToggle: (btn) => batchProcessor.toggleBatch(btn),
             onRejectAll: () => batchProcessor.showRejectOptions(),
             onClearCache: (txId) => batchProcessor.clearCacheForTx(txId),
-            onFlag: (txId) => chrome.runtime.sendMessage({ action: "updateLastActivity", portalId: txId })
+            onFlag: (txId) => chrome.runtime.sendMessage({ action: "updateLastActivity", portalId: txId }),
+            onHookNativeReject: (link, row) => batchProcessor.hookNativeReject(link, row)
         });
         batchProcessor.restoreAllRows();
         batchProcessor.checkPendingAlert();

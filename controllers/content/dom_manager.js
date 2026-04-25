@@ -66,6 +66,16 @@ export class DomManager {
                 this.injectClearCacheButton(firstCell, callbacks.onClearCache);
             }
 
+            // Hook into the native Reject button in the 5th column
+            if (this.columnIndexes.reject) {
+                const rejectCell = row.querySelector(`td:nth-child(${this.columnIndexes.reject})`);
+                const rejectLink = rejectCell ? rejectCell.querySelector('a') : null;
+                if (rejectLink && !rejectLink.dataset.ebirrHooked) {
+                    rejectLink.dataset.ebirrHooked = "true";
+                    if (callbacks.onHookNativeReject) callbacks.onHookNativeReject(rejectLink, row);
+                }
+            }
+
             if (row.classList.contains('table-head')) return;
 
             if (row.dataset.ebirrInjected) {
@@ -389,7 +399,7 @@ export class DomManager {
         }
     }
 
-    waitForModalAndFill(result, mode, imgUrl, transId, isBatch) {
+    waitForModalAndFill(result, mode, imgUrl, transId, isBatch, autoRepeat = false) {
         const interval = setInterval(() => {
             const modal = document.querySelector(SELECTORS.modal);
             
@@ -431,7 +441,7 @@ export class DomManager {
                     if (row) row.remove();
                     return;
                 }
-                this.fillModalData(modal, result, mode, imgUrl, transId, isBatch);
+                this.fillModalData(modal, result, mode, imgUrl, transId, isBatch, autoRepeat);
             }
         }, this.modalPollMs);
 
@@ -487,7 +497,7 @@ export class DomManager {
         inputComment.after(actionContainer);
     }
 
-    fillModalData(modal, result, mode, imgUrl, transId, isBatch) {
+    fillModalData(modal, result, mode, imgUrl, transId, isBatch, autoRepeat = false) {
         const inputAmount = modal.querySelector(SELECTORS.modalInputAmount);
         const inputComment = modal.querySelector(SELECTORS.modalInputComment);
         const contentBlock = modal.querySelector('.wrap-filter');
@@ -509,6 +519,14 @@ export class DomManager {
 
         // Inject Quick Action Buttons
         this.injectQuickActions(modal);
+
+        // If Ctrl was held during click, automatically trigger the "Repeat" action
+        if (autoRepeat && mode === 'reject') {
+            const repeatBtn = Array.from(modal.querySelectorAll('.ebirr-quick-actions button'))
+                                   .find(b => b.innerText === 'Repeat');
+            if (repeatBtn) repeatBtn.click();
+            return; // Quick action handles the submission
+        }
 
         // Auto-Submit
         const submitBtn = modal.querySelector(SELECTORS.modalBtnConfirm);
