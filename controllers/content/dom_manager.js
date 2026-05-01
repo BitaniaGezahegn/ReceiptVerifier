@@ -247,7 +247,7 @@ export class DomManager {
         modal.appendChild(title);
 
         // Calculate counts from current page cache
-        const counts = { "Random": 0, "Bank 404": 0, "Repeat": 0, "Under 50": 0, "Skipped Name": 0, "PDF": 0 };
+        const counts = { "Random": 0, "Bank 404": 0, "Repeat": 0, "Under 50": 0, "Skipped Name": 0, "PDF": 0, "Verified": 0, "AA": 0, "Unprocessed": 0 };
         const rows = document.querySelectorAll(SELECTORS.row);
         rows.forEach(row => {
             if (row.classList.contains('table-head')) return;
@@ -256,8 +256,14 @@ export class DomManager {
             if (cached) {
                 try {
                     const data = JSON.parse(cached);
-                    if (counts.hasOwnProperty(data.status)) counts[data.status]++;
+                    if (data.status.startsWith("AA")) {
+                        counts["AA"]++;
+                    } else if (counts.hasOwnProperty(data.status)) {
+                        counts[data.status]++;
+                    }
                 } catch (e) {}
+            } else {
+                counts["Unprocessed"]++;
             }
         });
 
@@ -267,7 +273,10 @@ export class DomManager {
             { label: "Repeat / Duplicate", value: "Repeat" },
             { label: "Under 50", value: "Under 50" },
             { label: "Skipped Name", value: "Skipped Name" },
-            { label: "PDF", value: "PDF" }
+            { label: "PDF", value: "PDF" },
+            { label: "Verified", value: "Verified" },
+            { label: "AA (Amount Mismatch)", value: "AA" },
+            { label: "Unprocessed (Not Scanned)", value: "Unprocessed" }
         ];
 
         // Sort options by count, descending
@@ -511,7 +520,17 @@ export class DomManager {
             }
         } else if (mode === 'reject') {
             if (inputComment) {
-                const comment = result.status === 'Skipped Name' ? 'Wrong Recipient' : result.status;
+                let comment = result.status;
+
+                // Map internal statuses to valid portal rejection reasons
+                if (result.status === 'Skipped Name') {
+                    comment = 'Wrong Recipient';
+                } else if (result.status === 'Verified' || result.status.startsWith('AA')) {
+                    comment = 'Random'; // Default to "Random" for bulk-rejecting normal transactions
+                } else if (result.status === 'Unprocessed') {
+                    comment = ''; // Reject without writing a comment
+                }
+
                 inputComment.value = comment;
                 inputComment.dispatchEvent(new Event('input'));
             }

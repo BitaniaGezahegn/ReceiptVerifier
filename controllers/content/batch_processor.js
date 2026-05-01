@@ -89,10 +89,22 @@ export class BatchProcessor {
             if (cached) {
                 try {
                     const data = JSON.parse(cached);
-                    if (types.includes(data.status)) {
+                    // Check if the status matches any selected type, or if it's an "AA" status and "AA" is selected
+                    if (types.includes(data.status) || (types.includes("AA") && data.status.startsWith("AA"))) {
                         targets.push({ row, data });
                     }
                 } catch(e) {}
+            } else if (types.includes("Unprocessed")) {
+                // Add unprocessed rows as targets if selected
+                targets.push({ 
+                    row, 
+                    data: { 
+                        status: 'Unprocessed', 
+                        statusText: 'Unprocessed Reject',
+                        color: '#64748b',
+                        id: pageTxId
+                    } 
+                });
             }
         });
 
