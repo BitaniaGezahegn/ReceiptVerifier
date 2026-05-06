@@ -31,6 +31,7 @@ export async function callAIVisionWithRetry(base64, mimeType = 'image/jpeg') {
             lastAiRequestTime = Date.now();
             
             try {
+                console.log(`[AI Service] Calling AI Vision with key index ${settingsCache.activeKeyIndex} and model ${AI_MODELS[0]}`);
                 const result = await callAIVision(base64, keys, settingsCache.activeKeyIndex, banks, mimeType);
                 console.log("AI Result:", result);
                 resolve(result);
@@ -197,6 +198,7 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
             } 
 
             if (!content) {
+                 console.warn(`[AI Service] Key index ${i} returned no content for model ${AI_MODELS[modelIndex] || AI_MODELS[0]}.`);
                  console.warn(`Key index ${i} returned no content.`);
                  // Try next model if available
                  if (modelIndex < AI_MODELS.length - 1) {
@@ -211,6 +213,7 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
             
             // Smart Fallback: If AI returns "ERROR" (OCR failure), try next key if available
             if (content.toUpperCase().includes("ERROR")) {
+                console.warn(`[AI Service] Key index ${i} returned "ERROR" for model ${AI_MODELS[modelIndex] || AI_MODELS[0]}.`);
                 if (attempt < validKeys.length - 1) {
                     console.warn(`Key index ${i} returned ERROR (OCR Failed). Retrying with next key...`);
                     continue;
@@ -222,7 +225,10 @@ export async function callAIVision(base64Image, cachedKeys, cachedIndex, cachedB
             const words = content.split(/[\s,:]+/);
             for (const word of words) {
                 const cleaned = word.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-                if (isValidIdFormat(cleaned)) return cleaned;
+                if (isValidIdFormat(cleaned)) {
+                    console.log(`[AI Service] Found valid ID "${cleaned}" from AI response.`);
+                    return cleaned;
+                }
             }
 
             const fallback = content.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();

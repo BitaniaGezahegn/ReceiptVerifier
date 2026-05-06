@@ -65,7 +65,7 @@ export function isValidIdFormat(id) {
     );
 
     if (matchedBank) console.log(`[SettingsService] ID "${id}" matched bank: ${matchedBank.name}`);
-    else console.warn(`[SettingsService] ID "${id}" did not match any configured bank formats.`);
+    else console.warn(`[SettingsService] ID "${id}" did not match any configured bank formats. Length: ${id.length}, Prefixes: ${banks.map(b => b.prefixes.join(',')).join(';')}`);
 
     return !!matchedBank;
 }

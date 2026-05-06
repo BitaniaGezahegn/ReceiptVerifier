@@ -2,14 +2,15 @@
 import { DEFAULT_BANKS } from '../../config.js';
 import { settingsCache } from '../../services/settings_service.js';
 import { callAIVisionWithRetry } from '../../services/ai_service.js';
-import { getTransaction, logTransactionResult } from '../../services/storage_service.js';
+import { getTransaction, logTransactionResult, getSmsEntryByFingerprint, getSmsEntryById, updateSmsEntry } from '../../services/storage_service.js';
 import { verifyTransactionData } from '../../services/verification.js';
 import { setupOffscreenDocument } from '../../services/offscreen_service.js';
 import { getMimeTypeFromDataUrl, getTimeAgo } from '../../utils/helpers.js';
 import { auth } from '../../services/firebase_config.js';
 
 export async function handleIntegrationVerify(request, tabId) {
-  const { src, amount, rowId, dataUrl, portalId } = request;
+  const { src, amount, rowId, dataUrl, portalId, customerPhone } = request;
+  console.log(`[Integration] handleIntegrationVerify called for rowId: ${rowId}, amount: ${amount}, customerPhone: ${customerPhone}, portalId: ${portalId}`);
   const updateStatus = (msg) => chrome.tabs.sendMessage(tabId, { action: "updateStatus", message: msg, rowId }).catch(() => {});
   
   let extractedId = null;
@@ -17,6 +18,7 @@ export async function handleIntegrationVerify(request, tabId) {
   try {
     if (!dataUrl) throw new Error("Failed to load image");
 
+    console.log(`[Integration] Processing image from src: ${src}`);
     // Check if it's a PDF by MIME type OR file extension
     const isPdf = dataUrl.startsWith("data:application/pdf") || (src && src.toLowerCase().split('?')[0].endsWith('.pdf'));
 
@@ -28,6 +30,7 @@ export async function handleIntegrationVerify(request, tabId) {
         };
         await logTransactionResult(pdfKey, verificationResult, null, "PDF", portalId);
 
+        console.log(`[Integration] PDF detected for rowId: ${rowId}. Skipping AI scan.`);
              // Fallback to manual review if no ID found in PDF
              chrome.tabs.sendMessage(tabId, {
                 action: "integrationResult",
@@ -56,6 +59,7 @@ export async function handleIntegrationVerify(request, tabId) {
         // 1. Try Enhanced Image First
         let enhancedBase64 = null;
         enhancedBase64 = await new Promise(resolve => {
+                console.log(`[Integration] Sending image to offscreen document for enhancement (rowId: ${rowId}).`);
                 chrome.runtime.sendMessage({ action: 'processImage', dataUrl }, (response) => {
                     resolve(response?.base64);
                 });
@@ -63,10 +67,12 @@ export async function handleIntegrationVerify(request, tabId) {
 
         if (enhancedBase64) {
         extractedId = await callAIVisionWithRetry(enhancedBase64, 'image/jpeg');
+        console.log(`[Integration] AI Vision (Enhanced) result for rowId ${rowId}: ${extractedId}`);
         }
 
         // 2. Fallback to Raw Image
         if (!extractedId || extractedId === "ERROR") {
+            console.log(`[Integration] AI Vision (Enhanced) failed or returned ERROR for rowId ${rowId}. Falling back to Raw Image.`);
             updateStatus("Retry (Raw Image)...");
             let rawBase64 = dataUrl.split(',')[1];
         let mimeType = getMimeTypeFromDataUrl(dataUrl);
@@ -75,6 +81,7 @@ export async function handleIntegrationVerify(request, tabId) {
     }
 
     if (extractedId === "RATE_LIMIT") {
+        console.warn(`[Integration] AI Rate Limit reached for rowId: ${rowId}`);
         chrome.tabs.sendMessage(tabId, {
             action: "integrationResult",
             rowId,
@@ -96,6 +103,7 @@ export async function handleIntegrationVerify(request, tabId) {
     }
 
     if (extractedId === "SERVICE_ERROR") {
+        console.error(`[Integration] AI Service Error for rowId: ${rowId}`);
         chrome.tabs.sendMessage(tabId, {
             action: "integrationResult",
             rowId,
@@ -117,6 +125,7 @@ export async function handleIntegrationVerify(request, tabId) {
     }
 
     if (!extractedId || extractedId === "ERROR" || extractedId.trim() === "" || !/^[A-Z0-9]+$/i.test(extractedId)) {
+      console.warn(`[Integration] Invalid or no ID extracted by AI for rowId: ${rowId}. Extracted: "${extractedId}"`);
       const randomKey = `RANDOM_${Date.now()}`;
       const verificationResult = {
           status: "Random",
@@ -150,6 +159,7 @@ export async function handleIntegrationVerify(request, tabId) {
     const matchedBank = banks.find(b => extractedId.length === parseInt(b.length) && b.prefixes.some(prefix => extractedId.startsWith(prefix)));
     
     if (!matchedBank) {
+      console.warn(`[Integration] Extracted ID "${extractedId}" for rowId ${rowId} did not match any configured bank formats.`);
       updateStatus("Invalid ID..."); // Only show if it actually fails
       const randomKey = `RANDOM_${Date.now()}`;
       const verificationResult = {
@@ -180,9 +190,80 @@ export async function handleIntegrationVerify(request, tabId) {
       return;
     }
 
+    // --- NEW SMS VAULT CHECK ---
+    console.log(`[Integration] Starting SMS Vault check for extractedId: ${extractedId}, customerPhone: ${customerPhone}, amount: ${amount}`);
+    updateStatus("Checking SMS Vault...");
+    let smsEntry = null;
+
+    // 1. Try Direct ID Match (Best for Kaffi-to-Kaffi)
+    console.log(`[Integration] Attempting direct ID match for ${extractedId}`);
+    smsEntry = await getSmsEntryById(extractedId);
+
+    // 2. Fallback to Fingerprint Match (Required for Coop/Wegagen)
+    if (!smsEntry && customerPhone && amount) {
+        console.log(`[Integration] No ID match. Checking fingerprint: ${customerPhone} / ETB ${amount}`);
+        smsEntry = await getSmsEntryByFingerprint(customerPhone, amount);
+        if (smsEntry) console.log(`[Integration] Fingerprint match found for ${customerPhone} / ${amount}. SMS ID: ${smsEntry.id}`);
+    }
+
+        if (smsEntry) {
+            console.log(`[Integration] SUCCESS: SMS Match found (${smsEntry.id}).`);
+            // SMS match found!
+            let status = "Verified";
+            let color = "#10b981";
+            let statusText = "✅ VERIFIED (SMS)";
+            let repeatCount = smsEntry.verificationCount || 0;
+
+            if (repeatCount > 0) {
+                status = "Repeat";
+                color = "#f59e0b";
+                statusText = "🔁 DUPLICATE / REPEAT (SMS)";
+            }
+
+            console.log(`[Integration] SMS Match found for ${smsEntry.id}. Status: ${status}. Updating SMS entry.`);
+            // Update the SMS entry in Firestore
+            await updateSmsEntry(smsEntry.id, {
+                verificationCount: (smsEntry.verificationCount || 0) + 1,
+                claimedByScreenshotId: extractedId,
+                status: status === "Verified" ? "verified" : "duplicate",
+                dateVerified: new Date().toLocaleString(),
+                processedBy: auth.currentUser.email,
+                processedByUid: auth.currentUser.uid,
+            });
+
+            // Log the transaction result using SMS data
+            const verificationResult = {
+                status: status,
+                foundAmt: smsEntry.amount,
+                senderName: smsEntry.senderName,
+                senderPhone: smsEntry.senderPhone,
+                foundName: smsEntry.recipientBank || "KAAFI", // Use bank as fallback for name
+                bankDate: smsEntry.transactionTimestamp ? new Date(smsEntry.transactionTimestamp.toDate()).toLocaleString() : "N/A",
+                timeStr: getTimeAgo(smsEntry.transactionTimestamp ? smsEntry.transactionTimestamp.toDate().getTime() : Date.now()),
+                repeatCount: repeatCount,
+            };
+            console.log(`[Integration] Logging transaction result for SMS entry ${smsEntry.id}:`, verificationResult);
+            await logTransactionResult(smsEntry.id, verificationResult, null, extractedId, portalId);
+
+            chrome.tabs.sendMessage(tabId, {
+                action: "integrationResult",
+                rowId: rowId,
+                success: true,
+                data: { ...verificationResult, color, statusText, id: smsEntry.id, processedBy: auth.currentUser.email },
+                extractedId: extractedId,
+                imgUrl: src
+            }).catch(() => {});
+            console.log(`[Integration] SMS verification complete for rowId: ${rowId}.`);
+            return; // SMS match handled, skip bank check
+        } else {
+            console.log("[Integration] No SMS match found in vault. Proceeding to legacy bank check.");
+        }
+    // --- END NEW SMS VAULT CHECK ---
+
     updateStatus("Checking Database...");
     let old;
     try {
+        console.log(`[Integration] Checking legacy database for extractedId: ${extractedId}`);
         old = await getTransaction(extractedId);
     } catch (e) {
         if (e.message === "OFFLINE") {
@@ -210,6 +291,7 @@ export async function handleIntegrationVerify(request, tabId) {
 
     if (old) {
         const isIncomplete = !old.senderName || !old.bankDate;
+        console.log(`[Integration] Existing transaction found for ${extractedId}. Incomplete: ${isIncomplete}`);
         if (!isIncomplete) {
             // It's a complete repeat, do the repeat logic and return.
             old.repeatCount = (old.repeatCount || 0) + 1;
@@ -222,6 +304,7 @@ export async function handleIntegrationVerify(request, tabId) {
                 status: effectiveStatus,
                 foundAmt: old.amount,
             };
+            console.log(`[Integration] Logging repeat transaction for ${extractedId}:`, repeatResult);
             await logTransactionResult(extractedId, repeatResult, old, null, portalId);
 
             chrome.tabs.sendMessage(tabId, {
@@ -253,6 +336,7 @@ export async function handleIntegrationVerify(request, tabId) {
     updateStatus("Checking Bank...");
     // Offscreen document is already setup at start of function
     
+    console.log(`[Integration] Sending request to bank for extractedId: ${extractedId} via URL: ${matchedBank.url + extractedId}`);
     let data;
     try {
         data = await new Promise((resolve, reject) => {
@@ -269,6 +353,7 @@ export async function handleIntegrationVerify(request, tabId) {
     } catch (err) {
         chrome.tabs.sendMessage(tabId, { 
           action: "integrationResult", 
+          error: `Bank Check Failed: ${err.message}`,
           rowId, 
           success: false, 
           error: err.message,
@@ -278,6 +363,7 @@ export async function handleIntegrationVerify(request, tabId) {
     }
 
     if (!data || data.error) {
+        console.error(`[Integration] Bank data fetch failed for ${extractedId}. Error: ${data?.error || "Unknown"}`);
         chrome.tabs.sendMessage(tabId, { 
           action: "integrationResult", 
           rowId, 
@@ -290,6 +376,7 @@ export async function handleIntegrationVerify(request, tabId) {
 
       // CHECK FOR 404 / INVALID ID (Bank returned page but no data or "Not Found Page")
       if (!data.recipient) {
+          console.warn(`[Integration] Bank returned 404 for ${extractedId}.`);
           const result = { // This is the verificationResult
               status: "Bank 404",
               color: "#f59e0b",
@@ -317,10 +404,12 @@ export async function handleIntegrationVerify(request, tabId) {
       }
 
       const maxHours = settingsCache.maxReceiptAge || 0.5;
+      console.log(`[Integration] Verifying transaction data for ${extractedId}. Expected Amount: ${amount}, Target Name: ${settingsCache.targetName}, Max Age: ${maxHours} hours.`);
       const result = verifyTransactionData(data, amount, settingsCache.targetName, maxHours);
       
       if (parseFloat(String(result.foundAmt).replace(/,/g, '')) < 50) {
           result.status = "Under 50";
+          console.warn(`[Integration] Transaction ${extractedId} is under 50 ETB.`);
           result.color = "#ef4444";
           result.statusText = "❌ UNDER 50 ETB";
       }
@@ -328,6 +417,7 @@ export async function handleIntegrationVerify(request, tabId) {
       if (result.status.startsWith("AA")) result.color = "#3b82f6";
 
       await logTransactionResult(extractedId, result, old, null, portalId);
+      console.log(`[Integration] Bank verification complete for rowId: ${rowId}. Result:`, result);
 
       chrome.tabs.sendMessage(tabId, {
         action: "integrationResult",
@@ -350,7 +440,8 @@ export async function handleIntegrationVerify(request, tabId) {
 }
 
 export async function handleMultiIntegrationVerify(request, tabId) {
-    const { images, amount, rowId, primaryUrl, portalId } = request;
+    console.log(`[Integration] handleMultiIntegrationVerify called for rowId: ${request.rowId}, amount: ${request.amount}, customerPhone: ${request.customerPhone}`);
+    const { images, amount, rowId, primaryUrl, portalId, customerPhone } = request;
     const updateStatus = (msg) => chrome.tabs.sendMessage(tabId, { action: "updateStatus", message: msg, rowId }).catch(() => {});
 
     if (images.length > 1) updateStatus(`Processing ${images.length} Image(s)...`);
@@ -374,6 +465,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
 
     // 1. Extract & Verify IDs
     for (let i = 0; i < images.length; i++) {
+        console.log(`[Integration] Processing image ${i + 1}/${images.length} for multi-integration.`);
         const img = images[i];
         const statusPrefix = images.length > 1 ? `Image ${i + 1}/${images.length}` : `Image`;
         let mimeType = 'image/jpeg';
@@ -383,6 +475,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
 
             // 1. Try Enhanced Image First
             updateStatus(`Scanning  (Enhanced)...`);
+            console.log(`[Integration] Image ${i+1}: Sending to offscreen for enhancement.`);
             let enhancedBase64 = null;
                 
             if (img.enhancedDataUrl) {
@@ -397,9 +490,11 @@ export async function handleMultiIntegrationVerify(request, tabId) {
             }
 
             if (enhancedBase64) finalId = await callAIVisionWithRetry(enhancedBase64, 'image/jpeg');
+            console.log(`[Integration] Image ${i+1}: AI Vision (Enhanced) result: ${finalId}`);
 
             // 2. Fallback to Clean/Raw Image
             if (!finalId || finalId === "ERROR") {
+                console.log(`[Integration] Image ${i+1}: AI Vision (Enhanced) failed or returned ERROR. Falling back to Clean/Raw.`);
                 updateStatus(`Retry  (Clean)...`);
                 let cleanBase64 = null;
                 
@@ -444,9 +539,62 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                     continue;
                 }
 
+                // --- NEW SMS VAULT CHECK FOR MULTI-INTEGRATION ---
+                let smsEntry = await getSmsEntryById(finalId);
+
+                if (!smsEntry && customerPhone && amount) {
+                    console.log(`[Multi-Integration] Image ${i+1}: Checking fingerprint for ${customerPhone}`);
+                    smsEntry = await getSmsEntryByFingerprint(customerPhone, amount);
+                }
+
+                if (smsEntry) {
+                        console.log(`[Multi-Integration] Image ${i+1}: Match Found (${smsEntry.id})`);
+                        let smsMatchHandled = true;
+                        let status = "Verified";
+                        let repeatCount = smsEntry.verificationCount || 0;
+
+                        if (repeatCount > 0) {
+                            status = "Repeat";
+                        }
+
+                        await updateSmsEntry(smsEntry.id, {
+                            verificationCount: (smsEntry.verificationCount || 0) + 1,
+                            claimedByScreenshotId: finalId,
+                            status: status === "Verified" ? "verified" : "duplicate",
+                            dateVerified: new Date().toLocaleString(),
+                            processedBy: auth.currentUser.email,
+                            processedByUid: auth.currentUser.uid,
+                        });
+
+                        const verificationResult = {
+                            status: status,
+                            foundAmt: smsEntry.amount,
+                            senderName: smsEntry.senderName,
+                            senderPhone: smsEntry.senderPhone,
+                            foundName: smsEntry.recipientName,
+                            bankDate: smsEntry.transactionTimestamp ? new Date(smsEntry.transactionTimestamp.toDate()).toLocaleString() : "N/A",
+                            timeStr: getTimeAgo(smsEntry.transactionTimestamp ? smsEntry.transactionTimestamp.toDate().getTime() : Date.now()),
+                            repeatCount: repeatCount,
+                        };
+                        console.log(`[Multi-Integration] Image ${i+1}: Logging transaction result for SMS entry ${smsEntry.id}:`, verificationResult);
+                        await logTransactionResult(smsEntry.id, verificationResult, null, finalId, portalId);
+
+                        validTransactions.push({ id: smsEntry.id, amount: smsEntry.amount, data: verificationResult, timeStr: verificationResult.timeStr, existingTx: null });
+                        totalFoundAmount += smsEntry.amount;
+                        
+                        lastSenderName = smsEntry.senderName;
+                        lastSenderPhone = smsEntry.senderPhone;
+                        lastRecipientName = smsEntry.recipientName;
+                        lastTimeStr = verificationResult.timeStr;
+
+                        if (smsMatchHandled) continue; 
+                }
+                // --- END NEW SMS VAULT CHECK FOR MULTI-INTEGRATION ---
+
                 // Check DB for duplicates
                 let old = null;
                 try {
+                    console.log(`[Multi-Integration] Image ${i+1}: Checking legacy database for ${finalId}`);
                     old = await getTransaction(finalId);
                 } catch (e) {
                     if (e.message === "OFFLINE") {
@@ -474,11 +622,13 @@ export async function handleMultiIntegrationVerify(request, tabId) {
 
                 if (old) {
                     const isIncomplete = !old.senderName || !old.bankDate;
+                    console.log(`[Multi-Integration] Image ${i+1}: Existing transaction found for ${finalId}. Incomplete: ${isIncomplete}`);
                     if (!isIncomplete) {
                         // It's a complete repeat. Log and continue.
                         old.repeatCount = (old.repeatCount || 0) + 1;
                         old.lastRepeat = Date.now();
                         await logTransactionResult(finalId, { status: "Repeat", foundAmt: old.amount }, old, null, portalId);
+                        console.log(`[Multi-Integration] Image ${i+1}: Duplicate/Repeat transaction for ${finalId}.`);
                         errors.push(`ID : Duplicate / Repeat`);
                         maxRepeatCount = Math.max(maxRepeatCount, old.repeatCount);
                         if (!duplicateTransaction) duplicateTransaction = old;
@@ -489,6 +639,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
 
                 // Fetch Bank Data
                 const data = await new Promise((resolve) => {
+                    console.log(`[Multi-Integration] Image ${i+1}: Sending request to bank for ${finalId} via URL: ${matchedBank.url + finalId}`);
                     const timeoutId = setTimeout(() => resolve(null), 20000);
                     chrome.runtime.sendMessage({ action: 'parseReceipt', url: matchedBank.url + finalId }, (response) => {
                         clearTimeout(timeoutId);
@@ -497,10 +648,12 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                 });
 
                 if (!data || !data.recipient) {
+                    console.warn(`[Multi-Integration] Image ${i+1}: Bank returned 404 or no recipient for ${finalId}.`);
                     errors.push(`ID ${finalId}: Bank 404`);
                     continue;
                 }
 
+                console.log(`[Multi-Integration] Image ${i+1}: Verifying transaction data for ${finalId}.`);
                 // Verify Data (Pass 0 as amount to just check validity of Name/Date)
                 const check = verifyTransactionData(data, 0, settingsCache.targetName, settingsCache.maxReceiptAge);
                 
@@ -508,6 +661,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
 
                 if (numericAmt < 50) {
                      errors.push(`ID ${finalId}: Under 50`);
+                     console.warn(`[Multi-Integration] Image ${i+1}: Transaction ${finalId} is under 50 ETB.`);
                      if (!failedTransaction) {
                          failedTransaction = {
                              amount: numericAmt,
@@ -526,6 +680,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                 }
                 
                 if (!check.nameOk || !check.timeOk) {
+                     console.warn(`[Multi-Integration] Image ${i+1}: Transaction ${finalId} failed name/time check. Status: ${check.status}`);
                      errors.push(`ID : ${check.status}`);
                      if (!failedTransaction) {
                          failedTransaction = {
@@ -543,6 +698,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                      }
                 } else {
                      // Valid transaction found
+                     console.log(`[Multi-Integration] Image ${i+1}: Valid transaction found for ${finalId}. Amount: ${numericAmt}`);
                      validTransactions.push({ id: finalId, amount: numericAmt, data: data, timeStr: check.timeStr, existingTx: old });
                      totalFoundAmount += numericAmt;
                      
@@ -562,6 +718,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
 
     // 2. Analyze Results
     if (validTransactions.length === 0) {
+        console.log(`[Multi-Integration] No valid transactions found for rowId: ${rowId}. Handling errors.`);
         const isRateLimit = errors.some(e => e.includes("Rate Limit"));
         const isLoadError = errors.some(e => e.includes("Failed to load"));
         const isServiceError = errors.some(e => e.includes("Service Error"));
@@ -588,6 +745,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
             finalColor = "#ef4444";
             statusText = "❌ AI SERVICE ERROR";
         } else if (duplicateTransaction) {
+            console.log(`[Multi-Integration] Duplicate transaction detected for rowId: ${rowId}.`);
             // Already logged in the loop. Just setting UI variables.
             finalStatus = "Repeat";
             finalColor = "#f59e0b";
@@ -601,6 +759,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
             originalStatus = duplicateTransaction.status;
             extractedId = duplicateTransaction.id || "N/A";
         } else if (failedTransaction) {
+            console.log(`[Multi-Integration] Failed transaction detected for rowId: ${rowId}. Status: ${failedTransaction.status}`);
             // This is a specific failure (e.g. Old Receipt) that needs to be logged.
             const failureResult = {
                 status: failedTransaction.status,
@@ -613,6 +772,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                 bankDate: failedTransaction.bankDate
             };
             // Log the failed transaction.
+            console.log(`[Multi-Integration] Logging failed transaction for ${failedTransaction.id}:`, failureResult);
             await logTransactionResult(failedTransaction.id, failureResult, failedTransaction.existingTx, null, portalId);
 
             finalStatus = failedTransaction.status;
@@ -627,6 +787,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
             senderPhone = failedTransaction.senderPhone;
             extractedId = failedTransaction.id;
         } else if (isLoadError) {
+            console.warn(`[Multi-Integration] Image load failed for rowId: ${rowId}.`);
             finalStatus = "Image Load Failed"; // Treat load error as retryable
             finalColor = "#ef4444";
             statusText = "❌ IMAGE LOAD FAILED";
@@ -634,6 +795,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
         } else if (errors.length > 0) {
             finalStatus = "Random"; // Treat other errors as Random to prevent auto-reject
             finalColor = "#ef4444";
+            console.warn(`[Multi-Integration] Other errors for rowId: ${rowId}. First error: ${errors[0]}`);
             statusText = `❌ ${errors[0]}`;
 
             // FALLBACK FIX: Extract ID from error string if failedTransaction was missed
@@ -659,6 +821,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
             }
         } else {
             // This is a "Random" case where no valid ID was found or matched.
+            console.warn(`[Multi-Integration] No valid ID found or matched for rowId: ${rowId}. Marking as Random.`);
             const randomKey = `RANDOM_${Date.now()}`;
             const originalId = processedIds.size > 0 ? Array.from(processedIds).join(', ') : "ERROR";
             const randomResult = {
@@ -666,6 +829,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                 foundAmt: amount,
             };
             await logTransactionResult(randomKey, randomResult, null, originalId, portalId);
+            console.log(`[Multi-Integration] Logging random transaction for ${randomKey}.`);
             finalStatus = "Random";
         }
 
@@ -694,10 +858,12 @@ export async function handleMultiIntegrationVerify(request, tabId) {
     }
 
     // 3. Save Valid Transactions & Determine Status
+    console.log(`[Multi-Integration] Saving ${validTransactions.length} valid transactions for rowId: ${rowId}.`);
     for (const tx of validTransactions) {
         const verificationResult = { status: "Verified", foundAmt: tx.amount, senderName: tx.data.senderName, senderPhone: tx.data.senderPhone, foundName: tx.data.recipient, timeStr: tx.timeStr, bankDate: tx.data.date };
         await logTransactionResult(tx.id, verificationResult, tx.existingTx, null, portalId);
     }
+    console.log(`[Multi-Integration] Total found amount: ${totalFoundAmount}, Expected amount: ${amount}`);
 
     let finalStatus = "Verified";
     let color = "#10b981";
@@ -705,6 +871,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
 
     if (Math.abs(totalFoundAmount - parseFloat(amount)) > 0.01) {
         finalStatus = `AA is ${totalFoundAmount}`;
+        console.warn(`[Multi-Integration] Amount mismatch for rowId: ${rowId}. Total found: ${totalFoundAmount}, Expected: ${amount}`);
         color = "#3b82f6";
         statusText = `⚠️ TOTAL: ${totalFoundAmount}/${amount}`;
     }
@@ -729,4 +896,5 @@ export async function handleMultiIntegrationVerify(request, tabId) {
         extractedId: validTransactions.map(t => t.id).join(', '),
         imgUrl: primaryUrl
     }).catch(() => {});
+    console.log(`[Multi-Integration] Multi-integration verification complete for rowId: ${rowId}. Final Status: ${finalStatus}`);
 }
