@@ -433,7 +433,8 @@ export class BatchProcessor {
                     amount: amount,
                     rowId: rowId,
                     primaryUrl: imgUrl,
-                    portalId: portalId
+                    portalId: portalId,
+                    customerPhone: customerPhone
                 }, (response) => {
                     if (chrome.runtime.lastError && chrome.runtime.lastError.message.includes("Extension context invalidated")) {
                         this.handleExtensionInvalidated();

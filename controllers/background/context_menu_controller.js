@@ -2,7 +2,7 @@
 import { DEFAULT_BANKS } from '../../config.js';
 import { settingsCache, isValidIdFormat } from '../../services/settings_service.js';
 import { callAIVisionWithRetry } from '../../services/ai_service.js';
-import { getTransaction, logTransactionResult } from '../../services/storage_service.js';
+import { getTransaction, logTransactionResult, getSmsEntryById, getSmsEntryByClaimedId, updateSmsEntry } from '../../services/storage_service.js';
 import { verifyTransactionData } from '../../services/verification.js';
 import { setupOffscreenDocument } from '../../services/offscreen_service.js';
 import { getRawBase64, getTimeAgo } from '../../utils/helpers.js';
@@ -60,6 +60,70 @@ export function handleManualId(id, amount, tabId) {
 }
 
 export async function handleProcessedId(id, amount, originalTabId) {
+    // 1. SMS Vault Implementation
+    if (settingsCache.smsCheckEnabled) {
+        let smsEntry = await getSmsEntryById(id);
+        if (!smsEntry) smsEntry = await getSmsEntryByClaimedId(id);
+
+        if (smsEntry) {
+            const isRepeat = smsEntry.status !== "pending";
+            const status = isRepeat ? "Repeat" : "Verified";
+            const color = isRepeat ? "#f59e0b" : "#10b981";
+            const statusText = isRepeat ? "🔁 DUPLICATE / REPEAT (SMS)" : "✅ VERIFIED (SMS)";
+            const repeatCount = smsEntry.verificationCount || 0;
+
+            await updateSmsEntry(smsEntry.id, {
+                verificationCount: repeatCount + 1,
+                claimedByScreenshotId: id,
+                status: status === "Verified" ? "verified" : "duplicate",
+                dateVerified: new Date().toLocaleString(),
+                processedBy: auth.currentUser.email,
+                processedByUid: auth.currentUser.uid,
+            });
+
+            const verificationResult = {
+                status: status,
+                foundAmt: smsEntry.amount,
+                senderName: smsEntry.senderName,
+                senderPhone: smsEntry.senderPhone,
+                foundName: smsEntry.recipientBank || "KAAFI",
+                bankDate: smsEntry.transactionTimestamp ? new Date(smsEntry.transactionTimestamp.toDate()).toLocaleString() : "N/A",
+                timeStr: smsEntry.transactionTimestamp ? 
+                    getTimeAgo(smsEntry.transactionTimestamp.toDate().getTime()) : "Just now",
+                repeatCount: repeatCount,
+                color,
+                statusText
+            };
+
+            await logTransactionResult(smsEntry.id, verificationResult, null, id);
+
+            if (isRepeat) {
+                chrome.scripting.executeScript({
+                    target: { tabId: originalTabId },
+                    func: UI.showDuplicateModal,
+                    args: [TPL.getDuplicateHtml(id, verificationResult.timeStr, statusText), id, amount, statusText]
+                }).catch(() => {});
+            } else {
+                chrome.scripting.executeScript({
+                    target: { tabId: originalTabId },
+                    func: UI.showResultOverlay,
+                    args: [TPL.getResultOverlayHtml(verificationResult, repeatCount), id, status, verificationResult.foundAmt, verificationResult.senderName, verificationResult.senderPhone, verificationResult.timeStr, verificationResult.foundName]
+                }).catch(() => {});
+            }
+            return;
+        }
+    }
+
+    if (!settingsCache.bankCheckEnabled) {
+        chrome.scripting.executeScript({
+            target: { tabId: originalTabId },
+            func: (id) => alert(`SMS match not found for ID "${id}" and Bank Check is disabled.`),
+            args: [id]
+        }).catch(() => {});
+        return;
+    }
+
+    // 2. Legacy Database Check
     const old = await getTransaction(id);
     if (old) {
         const isIncomplete = !old.senderName || !old.bankDate;

@@ -613,16 +613,22 @@ export class DomManager {
         summaryDiv.innerHTML = `
             ${originalStatusHtml}
             <div style="font-weight:bold; color:${result.color}; margin-bottom:5px; padding-right: ${originalStatusHtml ? '80px' : '0'};">${result.statusText}</div>
-            <div style="display:flex; align-items:center; gap:5px; margin-bottom:5px; font-size:11px; color:#64748b;">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:5px; font-size:11px; color:#64748b;">
                 <span>ID: <b>${transId || 'N/A'}</b></span>
                 <span id="ebirr-copy-id" style="cursor:pointer; font-size:12px;" title="Copy ID">📋</span>
                 ${countHtml}
+                ${result.telegramMessageId ? `
+                    <a href="https://t.me/c/3956403266/${result.telegramMessageId}" target="_blank" style="text-decoration:none; font-size:14px; margin-left: auto;" title="View Telegram Message">
+                        ✈️ 
+                    </a>
+                ` : ''}
             </div>
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
                 <div>Amount: <b>${result.foundAmt}</b></div>
-                <div>${result.isReason ? 'Reason' : 'Name'}: <b>${result.foundName}</b></div>
+                <div>Phone: <b>${result.senderPhone || '-'}</b></div>
                 <div>Age: <b>${result.timeStr}</b></div>
                 <div>Sender: <b>${result.senderName || '-'}</b></div>
+                <div>Bank: <b>${result.bankName || 'Other'}</b></div>
             </div>
         `;
 

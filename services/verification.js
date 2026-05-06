@@ -116,6 +116,7 @@ export function verifyTransactionData(data, expectedAmt, targetName, maxHours) {
         senderName: finalSenderName, 
         senderPhone: finalSenderPhone, 
         foundName: String(finalRecipientName || "N/A"), 
-        nameOk, amtOk, timeOk, isReason 
+        nameOk, amtOk, timeOk, isReason,
+        bankName: "Other"
     };
   }

@@ -421,6 +421,40 @@ export async function getSmsEntryById(id) {
 }
 
 /**
+ * Retrieves an SMS entry from the sms_vault by its claimedByScreenshotId.
+ * This is used to find potential repeat transactions that were previously verified.
+ * @param {string} claimedId - The ID from the screenshot that might have claimed an SMS.
+ * @returns {Promise<object|null>} The matching SMS data or null if not found.
+ */
+export async function getSmsEntryByClaimedId(claimedId) {
+    await ensureAuthReady();
+    if (!auth.currentUser || !claimedId) {
+        console.warn("[SMS Vault] Missing claimedId for lookup.");
+        return null;
+    }
+
+    console.log(`[SMS Vault] Searching for claimedId: ${claimedId}`);
+    try {
+        const q = query(
+            collection(db, COL_SMS_VAULT),
+            where("claimedByScreenshotId", "==", claimedId),
+            limit(1)
+        );
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+            const match = { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() };
+            console.log(`[SMS Vault] CLAIMED MATCH FOUND: ID ${match.id} for claimedId ${claimedId}`);
+            return match;
+        }
+        console.log(`[SMS Vault] No claimed SMS found for claimedId: ${claimedId}.`);
+        return null;
+    } catch (e) {
+        console.error("[SMS Vault] Claimed ID Query Error:", e);
+        return null;
+    }
+}
+
+/**
  * Retrieves an SMS entry from the sms_vault collection based on sender phone and amount.
  * @param {string} senderPhone - The sender's phone number.
  * @param {number} amount - The transaction amount.

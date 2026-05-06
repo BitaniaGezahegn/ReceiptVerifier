@@ -71,7 +71,7 @@ export const getAiFailureHtml = () => `
 `;
 
 export const getResultOverlayHtml = (result, repeatCount) => {
-    const { status, color, statusText, foundAmt, timeStr, senderName, senderPhone, foundName, nameOk, amtOk, timeOk } = result;
+    const { status, color, statusText, foundAmt, timeStr, senderName, senderPhone, foundName, nameOk, amtOk, timeOk, telegramMessageId } = result;
     const isSuccess = status === "Verified";
     return `
       <style>
@@ -96,7 +96,14 @@ export const getResultOverlayHtml = (result, repeatCount) => {
       </style>
       <div class="header"><h2>${statusText}</h2></div>
       <div class="content">
-        <div class="row"><span class="label">Amount</span><div style="display:flex; align-items:center;"><span class="value">${foundAmt} ETB</span><span class="check-icon" title="Amount must match exactly">${amtOk ? '✅' : '❌'}</span></div></div>
+        <div class="row">
+            <span class="label">Amount</span>
+            <div style="display:flex; align-items:center;">
+                ${telegramMessageId ? `<a href="https://t.me/c/3956403266/${telegramMessageId}" target="_blank" style="text-decoration:none; margin-right:10px;" title="View Telegram Message">✈️</a>` : ''}
+                <span class="value">${foundAmt} ETB</span>
+                <span class="check-icon" title="Amount must match exactly">${amtOk ? '✅' : '❌'}</span>
+            </div>
+        </div>
         <div class="row"><span class="label">Count</span><div style="display:flex; align-items:center;"><span class="value">${(repeatCount || 0) + 1}</span></div></div>
         <div class="row"><span class="label">Recipient</span><div style="display:flex; align-items:center;"><span class="value value-name" title="Found: ${foundName}">${foundName}</span><span class="check-icon" title="Name must contain your Target Name">${nameOk ? '✅' : '❌'}</span></div></div>
         <div class="row"><span class="label">Age</span><div style="display:flex; align-items:center;"><span class="value">${timeStr}</span><span class="check-icon" title="Receipt must be newer than your Max Age setting">${timeOk ? '✅' : '❌'}</span></div></div>

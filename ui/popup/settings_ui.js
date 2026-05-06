@@ -1,6 +1,8 @@
 // c:\Users\BT\Desktop\Venv\zOther\Ebirr_Chrome_Verifier\ui\popup\settings_ui.js
 export class SettingsUI {
     constructor() {
+        this.smsCheckCheckbox = document.getElementById('sms-check-checkbox');
+        this.bankCheckCheckbox = document.getElementById('bank-check-checkbox');
         this.ageInput = document.getElementById('age-input');
         this.ageMinus = document.getElementById('age-minus');
         this.agePlus = document.getElementById('age-plus');
@@ -62,6 +64,8 @@ export class SettingsUI {
     }
 
     loadSettings(data) {
+        this.smsCheckCheckbox.checked = data.smsCheckEnabled !== false;
+        this.bankCheckCheckbox.checked = data.bankCheckEnabled !== false;
         if (data.maxReceiptAge) this.ageInput.value = data.maxReceiptAge;
         if (data.aiScanBehavior) this.aiBehaviorSelect.value = data.aiScanBehavior;
         if (data.targetName) this.targetNameInput.value = data.targetName;
@@ -98,6 +102,9 @@ export class SettingsUI {
     }
 
     bindEvents() {
+        this.smsCheckCheckbox.onchange = () => chrome.storage.local.set({ smsCheckEnabled: this.smsCheckCheckbox.checked });
+        this.bankCheckCheckbox.onchange = () => chrome.storage.local.set({ bankCheckEnabled: this.bankCheckCheckbox.checked });
+
         const updateAge = (val) => {
             if (val < 0.5) val = 0.5;
             this.ageInput.value = val;

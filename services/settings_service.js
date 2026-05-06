@@ -20,6 +20,8 @@ export let settingsCache = {
     sleepModeRepeat: 2,   // minutes (how often to repeat alert)
     sleepModeMaxRetries: 10, // max number of alerts
     sleepModeFailureLimit: 5, // consecutive errors
+    smsCheckEnabled: true,
+    bankCheckEnabled: true
 };
 
 let isInitialized = false;
