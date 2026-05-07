@@ -117,6 +117,6 @@ export function verifyTransactionData(data, expectedAmt, targetName, maxHours) {
         senderPhone: finalSenderPhone, 
         foundName: String(finalRecipientName || "N/A"), 
         nameOk, amtOk, timeOk, isReason,
-        bankName: "Other"
+        bankName: "Other" // Default to Other for bank portal checks
     };
   }

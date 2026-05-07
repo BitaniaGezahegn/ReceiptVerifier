@@ -60,10 +60,20 @@ export function handleManualId(id, amount, tabId) {
 }
 
 export async function handleProcessedId(id, amount, originalTabId) {
+    const banks = settingsCache.banks || DEFAULT_BANKS;
+    const matchedBank = banks.find(b => id.length === parseInt(b.length) && b.prefixes.some(prefix => id.startsWith(prefix)));
+    const isKaffiId = matchedBank && matchedBank.name === "Kaafi";
+    let isDirectMatch = false; // Initialize for context menu
+
     // 1. SMS Vault Implementation
     if (settingsCache.smsCheckEnabled) {
         let smsEntry = await getSmsEntryById(id);
-        if (!smsEntry) smsEntry = await getSmsEntryByClaimedId(id);
+        if (smsEntry) isDirectMatch = true;
+
+        if (!smsEntry) {
+            smsEntry = await getSmsEntryByClaimedId(id);
+            if (smsEntry && smsEntry.id === id) isDirectMatch = true;
+        }
 
         if (smsEntry) {
             const isRepeat = smsEntry.status !== "pending";
@@ -92,7 +102,8 @@ export async function handleProcessedId(id, amount, originalTabId) {
                     getTimeAgo(smsEntry.transactionTimestamp.toDate().getTime()) : "Just now",
                 repeatCount: repeatCount,
                 color,
-                statusText
+                statusText,
+                bankName: isDirectMatch ? "Kaafi" : "Other"
             };
 
             await logTransactionResult(smsEntry.id, verificationResult, null, id);
