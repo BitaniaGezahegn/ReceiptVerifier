@@ -2,10 +2,18 @@
 import { DEFAULT_BANKS } from '../../config.js';
 import { settingsCache, isValidIdFormat } from '../../services/settings_service.js';
 import { callAIVisionWithRetry } from '../../services/ai_service.js';
-import { getTransaction, logTransactionResult, getSmsEntryById, getSmsEntryByClaimedId, updateSmsEntry } from '../../services/storage_service.js';
+import { 
+  getTransaction, 
+  logTransactionResult, 
+  getSmsEntryById, 
+  getSmsEntryByClaimedId, 
+  updateSmsEntry, 
+  getSmsEntryByFingerprint 
+} from '../../services/storage_service.js';
 import { verifyTransactionData } from '../../services/verification.js';
 import { setupOffscreenDocument } from '../../services/offscreen_service.js';
-import { getRawBase64, getTimeAgo } from '../../utils/helpers.js';
+import { auth } from '../../services/firebase_config.js'; // Import auth here
+import { getRawBase64, getTimeAgo, getMimeTypeFromDataUrl } from '../../utils/helpers.js';
 import * as UI from '../../ui/injectors.js';
 import { BANK_XPATHS } from '../../utils/constants.js';
 import * as TPL from '../../ui/templates.js';
@@ -44,7 +52,7 @@ export async function handleStartAI(amount, imgSrc, tabId) {
         }
 
         chrome.scripting.executeScript({ target: { tabId: tabId }, func: () => document.getElementById('ebirr-status-host')?.remove() }).catch(() => {});
-        handleProcessedId(extractedId, amount, tabId);
+        handleProcessedId(extractedId, amount, tabId, null); // Initial call with null customerPhone
       } catch (err) {
         chrome.scripting.executeScript({ target: { tabId: tabId }, func: () => document.getElementById('ebirr-status-host')?.remove() }).catch(() => {});
         chrome.scripting.executeScript({ target: { tabId: tabId }, func: UI.showAiFailureModal, args: [TPL.getAiFailureHtml(), amount] }).catch(() => {});
@@ -56,14 +64,41 @@ export async function handleStartAI(amount, imgSrc, tabId) {
 }
 
 export function handleManualId(id, amount, tabId) {
-  handleProcessedId(id, amount, tabId);
+  handleProcessedId(id, amount, tabId, null); // Initial call with null customerPhone
 }
 
-export async function handleProcessedId(id, amount, originalTabId) {
+export async function handleProcessedId(id, amount, originalTabId, customerPhone = null) {
     const banks = settingsCache.banks || DEFAULT_BANKS;
     const matchedBank = banks.find(b => id.length === parseInt(b.length) && b.prefixes.some(prefix => id.startsWith(prefix)));
     const isKaffiId = matchedBank && matchedBank.name === "Kaafi";
     let isDirectMatch = false; // Initialize for context menu
+
+    // If it's not a Kaffi ID and we don't have a customerPhone yet, prompt for it.
+    if (!isKaffiId && customerPhone === null) {
+        const promptResult = await new Promise(resolve => {
+            chrome.scripting.executeScript({
+                target: { tabId: originalTabId },
+                func: UI.showPhoneNumberPrompt,
+                args: [TPL.getPhoneNumberPromptHtml()]
+            }, (results) => {
+                resolve(results?.[0]?.result);
+            });
+        });
+
+        if (promptResult === undefined) { // User closed the prompt
+            return;
+        }
+        customerPhone = promptResult; // Will be null if skipped
+    }
+
+    // If customerPhone is provided and it's not a Kaffi ID, attempt fingerprint match first.
+    if (customerPhone && !isKaffiId && settingsCache.smsCheckEnabled) {
+        const smsEntryByFingerprint = await getSmsEntryByFingerprint(customerPhone, amount);
+        if (smsEntryByFingerprint) {
+            // If a fingerprint match is found, use that ID for further processing.
+            id = smsEntryByFingerprint.id;
+        }
+    }
 
     // 1. SMS Vault Implementation
     if (settingsCache.smsCheckEnabled) {
@@ -86,7 +121,7 @@ export async function handleProcessedId(id, amount, originalTabId) {
                 verificationCount: repeatCount + 1,
                 claimedByScreenshotId: id,
                 status: status === "Verified" ? "verified" : "duplicate",
-                dateVerified: new Date().toLocaleString(),
+                dateVerified: new Date().toLocaleString(), // Use toLocaleString() for consistent format
                 processedBy: auth.currentUser.email,
                 processedByUid: auth.currentUser.uid,
             });
@@ -96,7 +131,7 @@ export async function handleProcessedId(id, amount, originalTabId) {
                 foundAmt: smsEntry.amount,
                 senderName: smsEntry.senderName,
                 senderPhone: smsEntry.senderPhone,
-                foundName: smsEntry.recipientBank || "KAAFI",
+                foundName: smsEntry.recipientName || "Kaafi",
                 bankDate: smsEntry.transactionTimestamp ? new Date(smsEntry.transactionTimestamp.toDate()).toLocaleString() : "N/A",
                 timeStr: smsEntry.transactionTimestamp ? 
                     getTimeAgo(smsEntry.transactionTimestamp.toDate().getTime()) : "Just now",
@@ -172,7 +207,7 @@ export async function openAndVerifyFullData(id, originalTabId, expectedAmount, e
   const matchedBank = banks.find(b => 
     id.length === parseInt(b.length) && 
     b.prefixes.some(prefix => id.startsWith(prefix))
-  );
+  ); // Re-evaluate matchedBank as ID might have changed due to fingerprint match
 
   if (!matchedBank) {
     chrome.scripting.executeScript({

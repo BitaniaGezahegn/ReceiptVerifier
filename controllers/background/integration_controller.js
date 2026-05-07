@@ -2,7 +2,7 @@
 import { DEFAULT_BANKS } from '../../config.js';
 import { settingsCache } from '../../services/settings_service.js';
 import { callAIVisionWithRetry } from '../../services/ai_service.js';
-import { getTransaction, logTransactionResult, getSmsEntryByFingerprint, updateSmsEntry } from '../../services/storage_service.js';
+import { getTransaction, logTransactionResult, getSmsEntryById, getSmsEntryByClaimedId, getSmsEntryByFingerprint, updateSmsEntry } from '../../services/storage_service.js';
 import { verifyTransactionData } from '../../services/verification.js';
 import { setupOffscreenDocument } from '../../services/offscreen_service.js';
 import { getMimeTypeFromDataUrl, getTimeAgo } from '../../utils/helpers.js';
@@ -250,6 +250,27 @@ export async function handleIntegrationVerify(request, tabId) {
     console.log("[Integration] No SMS match found. Proceeding to legacy bank portal check.");
     // --- END NEW SMS VAULT CHECK ---
 
+    if (!settingsCache.bankCheckEnabled) {
+        chrome.tabs.sendMessage(tabId, {
+            action: "integrationResult",
+            rowId,
+            success: true,
+            data: {
+                status: "Bank Check Disabled",
+                color: "#64748b",
+                statusText: "🚫 BANK CHECK DISABLED",
+                foundAmt: amount,
+                timeStr: "N/A",
+                foundName: "N/A",
+                senderName: "-",
+                senderPhone: "-"
+            },
+            extractedId: extractedId,
+            imgUrl: src
+        }).catch(() => {});
+        return;
+    }
+
 
     updateStatus("Checking Database...");
     let old;
@@ -432,14 +453,13 @@ export async function handleMultiIntegrationVerify(request, tabId) {
     let processedIds = new Set();
     let totalFoundAmount = 0;
     let errors = [];
-    let lastBankName = "Other";
+    let lastBankName = "Other"; // Initialize once at function scope
 
     // Metadata from the last valid transaction for display
     let lastSenderName = "-";
     let lastSenderPhone = "-";
     let lastRecipientName = "N/A";
     let lastTimeStr = "N/A";
-    let lastBankName = "Other";
     let lastTelegramMessageId = null;
     let maxRepeatCount = 0;
     let duplicateTransaction = null;
@@ -453,6 +473,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
         const img = images[i];
         let mimeType = 'image/jpeg';
         let isDirectMatch = false;
+        let smsEntry = null; // Declare smsEntry here
         
         try {
             let finalId = null;
@@ -523,7 +544,8 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                 }
 
                 // --- NEW SMS VAULT CHECK FOR MULTI-INTEGRATION ---
-                let smsEntry = await getSmsEntryById(finalId);
+                // 1. Direct ID Match
+                smsEntry = await getSmsEntryById(finalId);
                 if (smsEntry) isDirectMatch = true;
 
                 if (!smsEntry) {
@@ -577,6 +599,11 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                     continue; 
                 }
                 // --- END NEW SMS VAULT CHECK FOR MULTI-INTEGRATION ---
+
+                if (!settingsCache.bankCheckEnabled) {
+                    errors.push(`ID ${finalId}: Bank Check Disabled`);
+                    continue;
+                }
 
                 // Check DB for duplicates
                 let old = null;

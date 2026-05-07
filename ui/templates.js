@@ -174,3 +174,33 @@ export const getCustomPromptHtml = (title, message) => `
       <button id="btn-ok">Submit</button>
     </div>
 `;
+
+export const getPhoneNumberPromptHtml = () => `
+    <style>
+      h3 { margin: 0 0 10px 0; color: #1e293b; font-size: 18px; font-weight: 600; }
+      p { color: #475569; font-size:15px; margin: 0 0 15px 0; }
+      #phone-input { 
+        width: 100%; padding: 12px; border: 1px solid #e2e8f0; 
+        border-radius: 8px; box-sizing: border-box; outline: none;
+        font-size: 16px; text-align: center; margin-bottom: 20px;
+      }
+      #phone-input:focus { border-color: #3b82f6; }
+      .btn-group { display: flex; gap: 10px; }
+      button {
+        flex: 1; padding: 12px; border: none; border-radius: 8px; 
+        cursor: pointer; font-weight: 600; font-size: 14px;
+        transition: opacity 0.2s;
+      }
+      #btn-ok { background: #3b82f6; color: white; }
+      #btn-skip { background: #f59e0b; color: white; }
+      #btn-cancel { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+    </style>
+    <h3>Sender Phone Number</h3>
+    <p>Enter the sender's phone number for a more accurate SMS vault lookup. You can skip this step.</p>
+    <input type="tel" id="phone-input" placeholder="e.g., 0912345678" />
+    <div class="btn-group">
+      <button id="btn-cancel">Cancel</button>
+      <button id="btn-skip">Skip</button>
+      <button id="btn-ok">Continue</button>
+    </div>
+`;

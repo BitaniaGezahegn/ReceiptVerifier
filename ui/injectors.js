@@ -216,6 +216,43 @@ export function showRandomReviewModal(html, mgmtTabId, rowId, extractedId, imgUr
       setTimeout(() => resolve(null), 8000);
     });
   }
+
+  export function showPhoneNumberPrompt(html) {
+    return new Promise((resolve) => {
+      if (document.getElementById("ebirr-phone-prompt-host")) return;
+      const host = document.createElement('div');
+      host.id = "ebirr-phone-prompt-host";
+      host.style = "position:fixed; top:0; left:0; width:100%; height:100%; z-index:2147483647; background:rgba(0,0,0,0.5); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;";
+      document.body.appendChild(host);
+  
+      const shadow = host.attachShadow({ mode: 'open' });
+      const modal = document.createElement('div');
+      modal.style = `
+        position:fixed; top:50%; left:50%; 
+        transform:translate(-50%, -50%); 
+        background: #f8fafc; padding: 25px; 
+        border-radius:12px; box-shadow:0 10px 40px rgba(0,0,0,0.4); 
+        width:350px; text-align:center; border: 1px solid #e2e8f0;
+      `;
+      modal.innerHTML = html;
+      shadow.appendChild(modal);
+  
+      const input = shadow.getElementById('phone-input');
+      input.focus();
+      const done = (value) => { host.remove(); resolve(value); };
+  
+      shadow.getElementById('btn-ok').onclick = () => done(input.value.trim() || null); // Resolve with null if empty
+      shadow.getElementById('btn-skip').onclick = () => done(null); // Explicitly skip
+      shadow.getElementById('btn-cancel').onclick = () => done(undefined); // User closed the prompt
+
+      host.addEventListener('click', (e) => { if (e.target === host) done(undefined); });
+      modal.addEventListener('click', (e) => e.stopPropagation());
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') done(input.value.trim() || null);
+        if (e.key === 'Escape') done(undefined);
+      });
+    });
+  }
   
   export async function scrapeBankData(xpaths) {
     console.log("[Scraper] Starting extraction. URL:", window.location.href);

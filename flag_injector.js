@@ -15,6 +15,10 @@ function init() {
 
     // Watch for table updates (pagination, filtering, etc.)
     const observer = new MutationObserver(() => {
+        if (!chrome.runtime?.id) {
+            observer.disconnect();
+            return;
+        }
         // Debounce the scan to avoid running it too many times during rapid DOM changes.
         if (window.ebirrFlagScanTimeout) {
             clearTimeout(window.ebirrFlagScanTimeout);
@@ -25,6 +29,8 @@ function init() {
 }
 
 async function scanAndInject() {
+    if (!chrome.runtime?.id) return;
+
     console.log("Ebirr Flag Injector: Scanning for table...");
     // 1. Find the most likely data table on the page.
     const tables = Array.from(document.querySelectorAll('table'));
@@ -65,7 +71,7 @@ async function scanAndInject() {
     try {
         storage = await chrome.storage.local.get([STORAGE_KEY]);
     } catch (e) {
-        if (e.message.includes("Extension context invalidated")) {
+        if (!chrome.runtime?.id || e.message?.includes("Extension context invalidated")) {
             console.warn("Ebirr Flag Injector: Extension context invalidated. Stopping.");
             return;
         }
