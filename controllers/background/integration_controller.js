@@ -235,7 +235,8 @@ export async function handleIntegrationVerify(request, tabId) {
             repeatCount: repeatCount,
             bankName: isDirectMatch ? "Kaafi" : "Other"
         };
-        await logTransactionResult(smsEntry.id, verificationResult, null, extractedId, portalId);
+        const existingTx = await getTransaction(smsEntry.id);
+        await logTransactionResult(smsEntry.id, verificationResult, existingTx, extractedId, portalId);
 
         chrome.tabs.sendMessage(tabId, {
             action: "integrationResult",
@@ -585,9 +586,18 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                         repeatCount: repeatCount,
                         bankName: isDirectMatch ? "Kaafi" : "Other"
                     };
-                    await logTransactionResult(smsEntry.id, verificationResult, null, finalId, portalId);
+                    
+                    // Fetch existing transaction to properly track repeat counts
+                    const existingTx = await getTransaction(smsEntry.id);
 
-                    validTransactions.push({ id: smsEntry.id, amount: smsEntry.amount, data: verificationResult, timeStr: verificationResult.timeStr, existingTx: null, isDirectMatch });
+                    validTransactions.push({ 
+                        id: smsEntry.id, 
+                        amount: smsEntry.amount, 
+                        data: verificationResult, 
+                        timeStr: verificationResult.timeStr, 
+                        existingTx: existingTx, 
+                        isDirectMatch 
+                    });
                     totalFoundAmount += smsEntry.amount;
                     
                     lastSenderName = smsEntry.senderName;
@@ -864,7 +874,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
     // 3. Save Valid Transactions & Determine Status
     for (const tx of validTransactions) {
         const verificationResult = { 
-            status: "Verified", 
+            status: tx.data.status || "Verified", 
             foundAmt: tx.amount, 
             senderName: tx.data.senderName, 
             senderPhone: tx.data.senderPhone, 
@@ -879,8 +889,16 @@ export async function handleMultiIntegrationVerify(request, tabId) {
     let finalStatus = "Verified";
     let color = "#10b981";
     let statusText = images.length > 1 ? "✅ VERIFIED (MULTI)" : "✅ VERIFIED";
+    let finalRepeatCount = 0;
 
-    if (Math.abs(totalFoundAmount - parseFloat(amount)) > 0.01) {
+    // Determine if the overall status is a repeat
+    const allRepeat = validTransactions.length > 0 && validTransactions.every(tx => tx.data.status === "Repeat");
+    if (allRepeat) {
+        finalStatus = "Repeat";
+        color = "#f59e0b";
+        statusText = "🔁 DUPLICATE / REPEAT";
+        finalRepeatCount = Math.max(...validTransactions.map(tx => (tx.existingTx?.repeatCount || 0) + 1));
+    } else if (Math.abs(totalFoundAmount - parseFloat(amount)) > 0.01) {
         finalStatus = `AA is ${totalFoundAmount}`;
         color = "#3b82f6";
         statusText = `⚠️ TOTAL: ${totalFoundAmount}/${amount}`;
@@ -899,7 +917,7 @@ export async function handleMultiIntegrationVerify(request, tabId) {
             foundName: lastRecipientName, 
             senderName: lastSenderName, 
             senderPhone: lastSenderPhone, 
-            repeatCount: 0,
+            repeatCount: finalRepeatCount,
             id: validTransactions.map(t => t.id).join(', '),
             processedBy: auth.currentUser ? auth.currentUser.email : "System",
             bankName: lastBankName

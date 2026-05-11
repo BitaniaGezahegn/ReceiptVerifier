@@ -141,7 +141,8 @@ export async function handleProcessedId(id, amount, originalTabId, customerPhone
                 bankName: isDirectMatch ? "Kaafi" : "Other"
             };
 
-            await logTransactionResult(smsEntry.id, verificationResult, null, id);
+            const existingTx = await getTransaction(smsEntry.id);
+            await logTransactionResult(smsEntry.id, verificationResult, existingTx, id);
 
             if (isRepeat) {
                 chrome.scripting.executeScript({
