@@ -61,6 +61,7 @@ export function routeMessage(request, sender, sendResponse) {
 
     case "manualIdEntry":
       handleManualId(request.id, request.amount, sender.tab.id);
+      sendResponse({ status: "received" });
       break;
 
     case "triggerManualPrompt":
@@ -103,10 +104,12 @@ export function routeMessage(request, sender, sendResponse) {
 
     case "verifyIntegration":
       handleIntegrationVerify(request, sender.tab.id);
+      sendResponse({ status: "received" });
       break;
       
     case "verifyMultiIntegration":
       handleMultiIntegrationVerify(request, sender.tab.id);
+      sendResponse({ status: "received" });
       break;
 
     case "testTelegram":

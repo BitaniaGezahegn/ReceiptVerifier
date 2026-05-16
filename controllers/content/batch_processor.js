@@ -316,11 +316,10 @@ export class BatchProcessor {
                 // Validate the length of the matched phone number
                 const normalizedPhone = phoneMatch[0].replace(/\D/g, "");
                 if (normalizedPhone.length !== 10 && normalizedPhone.length !== 12) {
-                    console.warn(`[BatchProcessor] Found potential phone "${phoneMatch[0]}", but normalized length (${normalizedPhone.length}) is not 10 or 12 digits. Skipping.`);
                     continue; // Keep searching other cells
                 }
                 
-                console.log(`[BatchProcessor] Raw phone match found: "${phoneMatch[0]}"`);
+
                 customerPhone = phoneMatch[0];
                 break;
             }
@@ -440,13 +439,18 @@ export class BatchProcessor {
                     if (chrome.runtime.lastError && chrome.runtime.lastError.message.includes("Extension context invalidated")) {
                         this.handleExtensionInvalidated();
                     }
-                    else if (chrome.runtime.lastError) console.error("[BatchProcessor] Chrome runtime error during multi-integration send:", chrome.runtime.lastError.message);
+                    else if (chrome.runtime.lastError) {
+                        const msg = chrome.runtime.lastError.message;
+                        if (!msg.includes("message port closed")) {
+                            console.error("[BatchProcessor] Send Error:", msg);
+                        }
+                    }
                 });
             } catch (e) {
                 console.error("Extension context invalidated (MultiVerify):", e);
                 this.handleExtensionInvalidated();
             }
-            console.log(`[BatchProcessor] Multi-integration request sent for rowId: ${rowId}.`);
+
         })
         .catch(err => {
             const errMsg = (err && err.message) ? err.message : String(err);

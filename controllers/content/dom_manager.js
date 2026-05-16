@@ -64,6 +64,12 @@ export class DomManager {
             const firstCell = row.querySelector('td:first-child');
             if (firstCell) {
                 this.injectClearCacheButton(firstCell, callbacks.onClearCache);
+                
+                // Inject Flag Button into the ID column (first column)
+                const txId = this.getTxId(row);
+                if (txId && /^\d+$/.test(txId) && !firstCell.querySelector('.ebirr-flag-btn')) {
+                    this.injectFlagButton(firstCell, row, txId, !!this.flaggedMap[txId], callbacks.onFlag || this.onFlagCallback);
+                }
             }
 
             // Hook into the native Reject button in the 5th column
@@ -373,12 +379,6 @@ export class DomManager {
             btn.style.cssText = "padding: 2px 8px; font-size: 11px; background-color: #3b82f6; border: none; color: white; border-radius: 3px; cursor: pointer;";
             btn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); callbacks.onVerify(row, imgUrl); };
             container.appendChild(btn);
-        }
-
-        // Inject Flag Button next to Verify/Cancel
-        const txId = this.getTxId(row);
-        if (txId && /^\d+$/.test(txId)) {
-            this.injectFlagButton(container, row, txId, !!this.flaggedMap[txId], callbacks.onFlag || this.onFlagCallback);
         }
     }
 
