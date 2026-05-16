@@ -1,5 +1,5 @@
 // c:\Users\BT\Desktop\Venv\zOther\Ebirr_Chrome_Verifier\controllers\background\message_router.js
-import { handleStartAI, handleManualId, handleProcessedId, handleScreenshotFlow, openAndVerifyFullData } from './context_menu_controller.js';
+import { handleStartAI, handleManualId, handleProcessedId, handleScreenshotFlow } from './context_menu_controller.js';
 import { handleIntegrationVerify, handleMultiIntegrationVerify } from './integration_controller.js';
 import { handlePdfCapture } from '../../services/pdf_service.js';
 import { updateLastActivity } from '../../services/storage_service.js';
@@ -75,7 +75,8 @@ export function routeMessage(request, sender, sendResponse) {
       break;
 
     case "continueDuplicate":
-      openAndVerifyFullData(request.id, sender.tab.id, request.amount);
+      // Re-runs verification for the given ID through the SMS-only flow.
+      handleProcessedId(request.id, request.amount, sender.tab.id, null);
       break;
 
     case "closeTab":

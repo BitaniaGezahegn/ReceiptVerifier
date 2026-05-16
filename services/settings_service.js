@@ -5,8 +5,7 @@ export let settingsCache = {
     apiKeys: [DEFAULT_API_KEY],
     activeKeyIndex: 0,
     banks: DEFAULT_BANKS,
-    maxReceiptAge: 0.5,
-    headlessMode: true,
+
     aiScanBehavior: 'always_ai',
     skipByNameEnabled: true,
     skippedNames: DEFAULT_SKIPPED_NAMES,
@@ -20,8 +19,9 @@ export let settingsCache = {
     sleepModeRepeat: 2,   // minutes (how often to repeat alert)
     sleepModeMaxRetries: 10, // max number of alerts
     sleepModeFailureLimit: 5, // consecutive errors
-    smsCheckEnabled: true,
-    bankCheckEnabled: true
+    skipRandomEnabled: false,
+    skipWrongRecipientEnabled: false,
+    fullAutoMode: false,
 };
 
 let isInitialized = false;

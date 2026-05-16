@@ -1,46 +1,25 @@
-// c:\Users\BT\Desktop\Venv\zOther\Ebirr_Chrome_Verifier\services\offscreen_service.js
-export async function setupOffscreenDocument() {
-  const existingContexts = await chrome.runtime.getContexts({
-    contextTypes: ['OFFSCREEN_DOCUMENT']
-  });
-  if (existingContexts.length > 0) {
-    return;
-  }
-  await chrome.offscreen.createDocument({
-    url: 'offscreen.html',
-    reasons: ['DOM_PARSER'],
-    justification: 'To crop and process screenshots',
-  });
-}
+/**
+ * offscreen_service.js — STUB
+ *
+ * The offscreen document (offscreen.js / offscreen.html) has been removed as part of the
+ * SMS-only verification refactor. The bank portal scraping that relied on it is no longer used.
+ *
+ * The `setupOffscreenDocument` export is kept as a no-op so that any remaining callers
+ * (e.g. the screenshot-crop flow in message_router.js) can still call it without errors.
+ * The cropper flow sends a direct `cropImage` message to the background service worker and
+ * does not actually require an offscreen document.
+ */
 
-export async function parseReceiptWithOffscreen(url) {
-    await setupOffscreenDocument();
-    return new Promise((resolve, reject) => {
-        const timeoutId = setTimeout(() => reject(new Error("Bank Check Timeout")), 20000);
-        chrome.runtime.sendMessage({ action: 'parseReceipt', url: url }, (response) => {
-            clearTimeout(timeoutId);
-            if (chrome.runtime.lastError) {
-                reject(new Error("Connection Error: " + chrome.runtime.lastError.message));
-            } else {
-                resolve(response);
-            }
-        });
-    });
+// eslint-disable-next-line @typescript-eslint/no-empty-function
+export async function setupOffscreenDocument() {
+    // No-op: offscreen document has been removed.
 }
 
 export async function processImageWithOffscreen(dataUrl) {
-    await setupOffscreenDocument();
-    return new Promise(resolve => {
-        chrome.runtime.sendMessage({ action: 'processImage', dataUrl }, (response) => {
-            resolve(response?.base64);
-        });
-    });
+    // No-op stub — image processing is now handled inline in integration_controller.js
+    return null;
 }
 
 export async function cropImageWithOffscreen(dataUrl, rect, tabId) {
-    if (!rect || rect.width <= 0 || rect.height <= 0) {
-        return;
-    }
-    await setupOffscreenDocument();
-    chrome.runtime.sendMessage({ action: 'cropImage', dataUrl: dataUrl, rect: rect, tabId: tabId });
+    // No-op stub — cropping is triggered directly via chrome.runtime.sendMessage in message_router.js
 }

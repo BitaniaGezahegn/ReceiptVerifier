@@ -20,6 +20,7 @@ export class BatchProcessor {
             transactionSoundEnabled: false,
             skipPdfEnabled: false,
             skipRandomEnabled: false,
+            skipWrongRecipientEnabled: false,
             skipRepeatEnabled: true,
             repeatLimit: 3,
             retryWrongRecipient: false,
@@ -715,8 +716,9 @@ export class BatchProcessor {
         const isAA = result.status.startsWith("AA");
         const isPdfSkip = result.status === "PDF" && this.isBatchRunning && this.settings.skipPdfEnabled;
         const isRandomSkip = result.status === "Random" && this.isBatchRunning && this.settings.skipRandomEnabled;
+        const isWrongRecipientSkip = result.status === "Wrong Recipient" && this.isBatchRunning && this.settings.skipWrongRecipientEnabled;
         const isRepeatSkip = this.isBatchRunning && result.repeatCount >= this.settings.repeatLimit;
-        const isSkipping = isPdfSkip || isRandomSkip || isRepeatSkip;
+        const isSkipping = isPdfSkip || isRandomSkip || isWrongRecipientSkip || isRepeatSkip;
 
         if (this.settings.transactionSoundEnabled) {
             console.log(`[BatchProcessor] Playing sound for status: ${result.status}`);
@@ -728,8 +730,8 @@ export class BatchProcessor {
         this.saveRowState(row, result);
         this.restoreRowState(row); // Update UI with label and tooltip
         
-        // Handle Skips (PDF/Random)
-        if (result.status === "Random" || result.status === "PDF") {
+        // Handle Skips (PDF/Random/Wrong Recipient)
+        if (result.status === "Random" || result.status === "PDF" || result.status === "Wrong Recipient") {
             console.log(`[BatchProcessor] Handling skip for status: ${result.status}`);
             if (isPdfSkip) {
                  showNotification("Skipping PDF...", "error");
@@ -766,6 +768,37 @@ export class BatchProcessor {
                             }
                         };
                         this.saveRowState(row, result, "Reject Random");
+                        container.appendChild(btn);
+                     }
+                 }
+                 if (this.settings.transactionSoundEnabled) playTransactionSound('random');
+                 setTimeout(() => this.processBatchQueue(), 500);
+                 return;
+            }
+
+            if (isWrongRecipientSkip) {
+                 console.log("[BatchProcessor] Skipping due to 'Wrong Recipient' status.");
+                 showNotification("Skipping Wrong Recipient...", "error");
+                 if (row) {
+                     row.dataset.ebirrSkipped = "true";
+                     const container = row.querySelector('.ebirr-controller');
+                     if (container) {
+                        container.innerHTML = '';
+                        const btn = document.createElement('button');
+                        btn.className = 'btn btn-danger btn-xs';
+                        btn.style.cssText = "padding: 2px 8px; font-size: 11px; background-color: #ef4444; border: none; color: white; border-radius: 3px; cursor: pointer;";
+                        btn.innerText = "Reject Wrong Recipient"; // Hold Ctrl for auto-repeat
+                        btn.onclick = (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const autoRepeat = e.ctrlKey;
+                            const rejectLink = this.domManager.columnIndexes.reject ? row.querySelector(`td:nth-child(${this.domManager.columnIndexes.reject}) a`) : null;
+                            if (rejectLink) {
+                                safeClick(rejectLink);
+                                this.domManager.waitForModalAndFill(result, 'reject', request.imgUrl, request.extractedId, true, autoRepeat);
+                            }
+                        };
+                        this.saveRowState(row, result, "Reject Wrong Recipient");
                         container.appendChild(btn);
                      }
                  }
@@ -1059,6 +1092,7 @@ export class BatchProcessor {
                     else if (data.status === "Repeat") data.buttonLabel = `Reject Repeat (${data.repeatCount || 0})`;
                     else if (data.status === "Under 50") data.buttonLabel = "Reject Under 50";
                     else if (data.status === "Skipped Name") data.buttonLabel = "Reject Skipped";
+                    else if (data.status === "Wrong Recipient") data.buttonLabel = "Reject Wrong Recipient";
                 }
 
                 if (data.status === "Skipped Name") {

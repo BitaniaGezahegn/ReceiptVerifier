@@ -16,7 +16,7 @@ async function init() {
         'pendingAlertEnabled', 'pendingLimit', 'batchReverse', 'transactionSoundEnabled', 
         'skipPdfEnabled', 'skipRandomEnabled', 'skipRepeatEnabled', 'repeatLimit', 
         'retryWrongRecipient', 'retryVerified', 'fullAutoMode', 'autoRefreshInterval', 'processingSpeed',
-        'telegramPendingAlert', 'ebirr_flagged_ids'
+        'skipWrongRecipientEnabled', 'telegramPendingAlert', 'ebirr_flagged_ids'
     ]);
 
     flaggedMapCache = result.ebirr_flagged_ids || {};
@@ -33,6 +33,7 @@ async function init() {
         fullAutoMode: result.fullAutoMode || false,
         autoRefreshInterval: parseInt(result.autoRefreshInterval) || 30,
         processingSpeed: result.processingSpeed || 'normal',
+        skipWrongRecipientEnabled: result.skipWrongRecipientEnabled || false,
         telegramPendingAlert: result.telegramPendingAlert || false,
         pendingLimit: parseInt(result.pendingLimit) || 5
     };
@@ -95,6 +96,7 @@ async function init() {
         if (changes.fullAutoMode) newSettings.fullAutoMode = changes.fullAutoMode.newValue;
         if (changes.autoRefreshInterval) newSettings.autoRefreshInterval = parseInt(changes.autoRefreshInterval.newValue) || 30;
         if (changes.processingSpeed) newSettings.processingSpeed = changes.processingSpeed.newValue;
+        if (changes.skipWrongRecipientEnabled) newSettings.skipWrongRecipientEnabled = changes.skipWrongRecipientEnabled.newValue;
         if (changes.telegramPendingAlert) newSettings.telegramPendingAlert = changes.telegramPendingAlert.newValue;
         
         batchProcessor.updateSettings(newSettings);

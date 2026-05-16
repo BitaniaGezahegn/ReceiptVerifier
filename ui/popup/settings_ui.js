@@ -1,11 +1,7 @@
 // c:\Users\BT\Desktop\Venv\zOther\Ebirr_Chrome_Verifier\ui\popup\settings_ui.js
 export class SettingsUI {
     constructor() {
-        this.smsCheckCheckbox = document.getElementById('sms-check-checkbox');
-        this.bankCheckCheckbox = document.getElementById('bank-check-checkbox');
-        this.ageInput = document.getElementById('age-input');
-        this.ageMinus = document.getElementById('age-minus');
-        this.agePlus = document.getElementById('age-plus');
+
         this.aiBehaviorSelect = document.getElementById('ai-behavior-select');
         this.targetNameInput = document.getElementById('target-name-input');
         this.skipByNameCheckbox = document.getElementById('skip-by-name-checkbox');
@@ -15,7 +11,6 @@ export class SettingsUI {
         this.skippedNamesList = document.getElementById('skipped-names-list');
         this.skippedNameDateInput = document.getElementById('skipped-name-date-input');
         this.clearSkippedNameDateBtn = document.getElementById('clear-skipped-name-date-btn');
-        this.headlessCheckbox = document.getElementById('headless-checkbox');
         this.pendingAlertCheckbox = document.getElementById('pending-alert-checkbox');
         this.pendingLimitInput = document.getElementById('pending-limit-input');
         this.telegramPendingAlertCheckbox = document.getElementById('telegram-pending-alert-checkbox');
@@ -30,6 +25,7 @@ export class SettingsUI {
         this.transactionSoundCheckbox = document.getElementById('transaction-sound-checkbox');
         this.skipPdfCheckbox = document.getElementById('skip-pdf-checkbox');
         this.skipRandomCheckbox = document.getElementById('skip-random-checkbox');
+        this.skipWrongRecipientCheckbox = document.getElementById('skip-wrong-recipient-checkbox');
         this.fullAutoCheckbox = document.getElementById('full-auto-checkbox');
         this.skipRepeatCheckbox = document.getElementById('skip-repeat-checkbox');
         this.repeatLimitInput = document.getElementById('repeat-limit-input');
@@ -64,17 +60,13 @@ export class SettingsUI {
     }
 
     loadSettings(data) {
-        this.smsCheckCheckbox.checked = data.smsCheckEnabled !== false;
-        this.bankCheckCheckbox.checked = data.bankCheckEnabled !== false;
-        if (data.maxReceiptAge) this.ageInput.value = data.maxReceiptAge;
+
         if (data.aiScanBehavior) this.aiBehaviorSelect.value = data.aiScanBehavior;
         if (data.targetName) this.targetNameInput.value = data.targetName;
         this.skipByNameCheckbox.checked = data.skipByNameEnabled !== false;
         this.toggleSkippedNamesContainer();
         this.renderSkippedNames(data.skippedNames || []);
         if (data.skippedNameDate) this.skippedNameDateInput.value = data.skippedNameDate;
-        
-        this.headlessCheckbox.checked = data.headlessMode !== false;
         this.pendingAlertCheckbox.checked = data.pendingAlertEnabled || false;
         if (data.pendingLimit) this.pendingLimitInput.value = data.pendingLimit;
         this.telegramPendingAlertCheckbox.checked = data.telegramPendingAlert || false;
@@ -88,6 +80,7 @@ export class SettingsUI {
         this.transactionSoundCheckbox.checked = data.transactionSoundEnabled || false;
         this.skipPdfCheckbox.checked = data.skipPdfEnabled || false;
         this.skipRandomCheckbox.checked = data.skipRandomEnabled || false;
+        this.skipWrongRecipientCheckbox.checked = data.skipWrongRecipientEnabled || false;
         this.fullAutoCheckbox.checked = data.fullAutoMode || false;
         this.skipRepeatCheckbox.checked = data.skipRepeatEnabled !== false;
         if (data.repeatLimit) this.repeatLimitInput.value = data.repeatLimit;
@@ -102,18 +95,7 @@ export class SettingsUI {
     }
 
     bindEvents() {
-        this.smsCheckCheckbox.onchange = () => chrome.storage.local.set({ smsCheckEnabled: this.smsCheckCheckbox.checked });
-        this.bankCheckCheckbox.onchange = () => chrome.storage.local.set({ bankCheckEnabled: this.bankCheckCheckbox.checked });
 
-        const updateAge = (val) => {
-            if (val < 0.5) val = 0.5;
-            this.ageInput.value = val;
-            chrome.storage.local.set({ maxReceiptAge: val });
-        };
-
-        this.ageMinus.onclick = () => updateAge(parseFloat(this.ageInput.value) - 0.5);
-        this.agePlus.onclick = () => updateAge(parseFloat(this.ageInput.value) + 0.5);
-        this.ageInput.onchange = () => updateAge(parseFloat(this.ageInput.value));
 
         this.aiBehaviorSelect.onchange = () => chrome.storage.local.set({ aiScanBehavior: this.aiBehaviorSelect.value });
         this.targetNameInput.onchange = () => chrome.storage.local.set({ targetName: this.targetNameInput.value.trim() });
@@ -130,7 +112,6 @@ export class SettingsUI {
             chrome.storage.local.set({ skippedNameDate: null });
         };
 
-        this.headlessCheckbox.onchange = () => chrome.storage.local.set({ headlessMode: this.headlessCheckbox.checked });
         this.pendingAlertCheckbox.onchange = () => chrome.storage.local.set({ pendingAlertEnabled: this.pendingAlertCheckbox.checked });
         this.pendingLimitInput.onchange = () => chrome.storage.local.set({ pendingLimit: parseInt(this.pendingLimitInput.value) || 5 });
         this.telegramPendingAlertCheckbox.onchange = () => chrome.storage.local.set({ telegramPendingAlert: this.telegramPendingAlertCheckbox.checked });
@@ -149,6 +130,7 @@ export class SettingsUI {
         this.transactionSoundCheckbox.onchange = () => chrome.storage.local.set({ transactionSoundEnabled: this.transactionSoundCheckbox.checked });
         this.skipPdfCheckbox.onchange = () => chrome.storage.local.set({ skipPdfEnabled: this.skipPdfCheckbox.checked });
         this.skipRandomCheckbox.onchange = () => chrome.storage.local.set({ skipRandomEnabled: this.skipRandomCheckbox.checked });
+        this.skipWrongRecipientCheckbox.onchange = () => chrome.storage.local.set({ skipWrongRecipientEnabled: this.skipWrongRecipientCheckbox.checked });
         
         this.fullAutoCheckbox.onchange = () => {
             chrome.storage.local.set({ fullAutoMode: this.fullAutoCheckbox.checked });

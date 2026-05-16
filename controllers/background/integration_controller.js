@@ -1,11 +1,9 @@
-// c:\Users\BT\Desktop\Venv\zOther\Ebirr_Chrome_Verifier\controllers\background\integration_controller.js
 import { DEFAULT_BANKS } from '../../config.js';
 import { settingsCache } from '../../services/settings_service.js';
 import { callAIVisionWithRetry } from '../../services/ai_service.js';
-import { getTransaction, logTransactionResult, getSmsEntryById, getSmsEntryByClaimedId, getSmsEntryByFingerprint, updateSmsEntry } from '../../services/storage_service.js';
-import { verifyTransactionData } from '../../services/verification.js';
-import { setupOffscreenDocument } from '../../services/offscreen_service.js';
-import { getMimeTypeFromDataUrl, getTimeAgo } from '../../utils/helpers.js';
+import { logTransactionResult } from '../../services/storage_service.js';
+import { verifyViaSms } from '../../services/sms_verification_service.js';
+import { getMimeTypeFromDataUrl } from '../../utils/helpers.js';
 import { auth } from '../../services/firebase_config.js';
 
 export async function handleIntegrationVerify(request, tabId) {
@@ -28,49 +26,47 @@ export async function handleIntegrationVerify(request, tabId) {
         };
         await logTransactionResult(pdfKey, verificationResult, null, "PDF", portalId);
 
-             // Fallback to manual review if no ID found in PDF
-             chrome.tabs.sendMessage(tabId, {
-                action: "integrationResult",
-                rowId,
-                success: true,
-                data: {
-                    status: "PDF",
-                    color: "#3b82f6",
-                    statusText: "📄 PDF (SKIPPED)",
-                    foundAmt: amount,
-                    timeStr: "N/A",
-                    foundName: "Manual Check Req.",
-                    senderName: "-",
-                    senderPhone: "-",
-                    repeatCount: 0
-                },
-                extractedId: "PDF",
-                imgUrl: src
-            }).catch(() => {});
-            return;
+        chrome.tabs.sendMessage(tabId, {
+            action: "integrationResult",
+            rowId,
+            success: true,
+            data: {
+                status: "PDF",
+                color: "#3b82f6",
+                statusText: "📄 PDF (SKIPPED)",
+                foundAmt: amount,
+                timeStr: "N/A",
+                foundName: "Manual Check Req.",
+                senderName: "-",
+                senderPhone: "-",
+                repeatCount: 0
+            },
+            extractedId: "PDF",
+            imgUrl: src
+        }).catch(() => {});
+        return;
     } else {
         // IMAGE FLOW
         updateStatus("AI Scanning (Enhanced)...");
-        await setupOffscreenDocument();
         
         // 1. Try Enhanced Image First
         let enhancedBase64 = null;
         enhancedBase64 = await new Promise(resolve => {
-                chrome.runtime.sendMessage({ action: 'processImage', dataUrl }, (response) => {
-                    resolve(response?.base64);
-                });
+            chrome.runtime.sendMessage({ action: 'processImage', dataUrl }, (response) => {
+                resolve(response?.base64);
             });
+        });
 
         if (enhancedBase64) {
-        extractedId = await callAIVisionWithRetry(enhancedBase64, 'image/jpeg');
+            extractedId = await callAIVisionWithRetry(enhancedBase64, 'image/jpeg');
         }
 
         // 2. Fallback to Raw Image
         if (!extractedId || extractedId === "ERROR") {
             updateStatus("Retry (Raw Image)...");
             let rawBase64 = dataUrl.split(',')[1];
-        let mimeType = getMimeTypeFromDataUrl(dataUrl);
-        extractedId = await callAIVisionWithRetry(rawBase64, mimeType);
+            let mimeType = getMimeTypeFromDataUrl(dataUrl);
+            extractedId = await callAIVisionWithRetry(rawBase64, mimeType);
         }
     }
 
@@ -116,11 +112,11 @@ export async function handleIntegrationVerify(request, tabId) {
         return;
     }
 
-    if (!extractedId || extractedId === "ERROR" || extractedId.trim() === "" || !/^[A-Z0-9]+$/i.test(extractedId)) {
+        if (!extractedId || extractedId === "ERROR" || extractedId.trim() === "" || !/^[A-Z0-9]+$/i.test(extractedId)) {
       const randomKey = `RANDOM_${Date.now()}`;
       const verificationResult = {
           status: "Random",
-          foundAmt: amount, // Log the expected amount as there's no found amount
+          foundAmt: amount,
       };
       await logTransactionResult(randomKey, verificationResult, null, "ERROR", portalId);
       
@@ -131,7 +127,7 @@ export async function handleIntegrationVerify(request, tabId) {
         data: {
           status: "Random",
           color: "#ef4444",
-          statusText: "❓ RANDOM / UNKNOWN",
+          statusText: "❌ RANDOM",
           foundAmt: "0",
           timeStr: "N/A",
           foundName: "N/A",
@@ -144,19 +140,16 @@ export async function handleIntegrationVerify(request, tabId) {
       return;
     }
 
-    updateStatus("Validating ID...");
+    updateStatus("Checking SMS Vault...");
     const banks = settingsCache.banks || DEFAULT_BANKS;
-    
     const matchedBank = banks.find(b => extractedId.length === parseInt(b.length) && b.prefixes.some(prefix => extractedId.startsWith(prefix)));
     const isKaffiId = matchedBank && matchedBank.name === "Kaafi";
-    let isDirectMatch = false;
-    let smsEntry = null;
 
     if (!matchedBank) {
       updateStatus("Invalid ID Format...");
       const randomKey = `RANDOM_${Date.now()}`;
       const verificationResult = {
-          status: "Random", // Treat as Random if bank format is wrong
+          status: "Random",
           foundAmt: amount,
           bankCheckResult: "No Matching Bank"
       };
@@ -169,7 +162,7 @@ export async function handleIntegrationVerify(request, tabId) {
         data: {
           status: "Random",
           color: "#ef4444",
-          statusText: "❌ RANDOM / UNKNOWN",
+          statusText: "❌ RANDOM",
           foundAmt: "0",
           timeStr: "N/A",
           foundName: "N/A",
@@ -183,255 +176,16 @@ export async function handleIntegrationVerify(request, tabId) {
       return;
     }
 
-    // --- NEW SMS VAULT CHECK ---
-    console.log(`[Integration] Checking SMS Vault for ${customerPhone} / ETB ${amount}`);
-    updateStatus("Checking SMS Vault...");
+    const { found, result, originalId } = await verifyViaSms(extractedId, amount, customerPhone, portalId, isKaffiId);
 
-    // 1. Direct ID Match
-    smsEntry = await getSmsEntryById(extractedId);
-    if (smsEntry) isDirectMatch = true;
-
-    // 2. Claimed ID Match (Deeper check for Kaffi repeats)
-    if (!smsEntry) {
-        smsEntry = await getSmsEntryByClaimedId(extractedId);
-        if (smsEntry && smsEntry.id === extractedId) isDirectMatch = true;
-    }
-
-    // 3. Fingerprint Match (Skip if format is Kaffi)
-    if (!smsEntry && !isKaffiId && customerPhone && amount) {
-        smsEntry = await getSmsEntryByFingerprint(customerPhone, amount);
-    }
-
-    if (smsEntry) {
-        console.log(`[Integration] SUCCESS: SMS Match found (${smsEntry.id}). Bypassing bank portal.`);
-        let status = "Verified";
-        let color = "#10b981";
-        let statusText = "✅ VERIFIED (SMS)";
-        let repeatCount = smsEntry.verificationCount || 0;
-
-        if (repeatCount > 0) {
-            status = "Repeat";
-            color = "#f59e0b";
-            statusText = "🔁 DUPLICATE / REPEAT (SMS)";
-        }
-
-        await updateSmsEntry(smsEntry.id, {
-            verificationCount: (smsEntry.verificationCount || 0) + 1,
-            claimedByScreenshotId: extractedId,
-            status: status === "Verified" ? "verified" : "duplicate",
-            dateVerified: new Date().toLocaleString(),
-            processedBy: auth.currentUser.email,
-            processedByUid: auth.currentUser.uid,
-        });
-
-        const verificationResult = {
-            status: status,
-            foundAmt: smsEntry.amount,
-            senderName: smsEntry.senderName,
-            senderPhone: smsEntry.senderPhone,
-            foundName: smsEntry.recipientName || "Kaafi",
-            bankDate: smsEntry.transactionTimestamp ? new Date(smsEntry.transactionTimestamp.toDate()).toLocaleString() : "N/A",
-            timeStr: getTimeAgo(smsEntry.transactionTimestamp ? smsEntry.transactionTimestamp.toDate().getTime() : Date.now()),
-            repeatCount: repeatCount,
-            bankName: isDirectMatch ? "Kaafi" : "Other"
-        };
-        const existingTx = await getTransaction(smsEntry.id);
-        await logTransactionResult(smsEntry.id, verificationResult, existingTx, extractedId, portalId);
-
-        chrome.tabs.sendMessage(tabId, {
-            action: "integrationResult",
-            rowId: rowId,
-            success: true,
-            data: { ...verificationResult, color, statusText, id: smsEntry.id, processedBy: auth.currentUser.email },
-            extractedId: extractedId,
-            imgUrl: src
-        }).catch(() => {});
-        return;
-    }
-    console.log("[Integration] No SMS match found. Proceeding to legacy bank portal check.");
-    // --- END NEW SMS VAULT CHECK ---
-
-    if (!settingsCache.bankCheckEnabled) {
-        chrome.tabs.sendMessage(tabId, {
-            action: "integrationResult",
-            rowId,
-            success: true,
-            data: {
-                status: "Bank Check Disabled",
-                color: "#64748b",
-                statusText: "🚫 BANK CHECK DISABLED",
-                foundAmt: amount,
-                timeStr: "N/A",
-                foundName: "N/A",
-                senderName: "-",
-                senderPhone: "-"
-            },
-            extractedId: extractedId,
-            imgUrl: src
-        }).catch(() => {});
-        return;
-    }
-
-
-    updateStatus("Checking Database...");
-    let old;
-    try {
-        old = await getTransaction(extractedId);
-    } catch (e) {
-        if (e.message === "OFFLINE") {
-            chrome.tabs.sendMessage(tabId, {
-                action: "integrationResult",
-                rowId,
-                success: true,
-                data: {
-                    status: "Offline",
-                    color: "#64748b",
-                    statusText: "⚠️ OFFLINE",
-                    foundAmt: "0",
-                    timeStr: "N/A",
-                    foundName: "Check Connection",
-                    senderName: "-",
-                    senderPhone: "-"
-                },
-                extractedId: extractedId,
-                imgUrl: src
-            }).catch(() => {});
-            return;
-        }
-        throw e;
-    }
-
-    if (old) {
-        const isIncomplete = !old.senderName || !old.bankDate;
-        if (!isIncomplete) {
-            // It's a complete repeat, do the repeat logic and return.
-            old.repeatCount = (old.repeatCount || 0) + 1;
-            old.lastRepeat = Date.now();
-            
-            let effectiveStatus = "Repeat";
-            let statusText = "🔁 DUPLICATE / REPEAT";
-
-            const repeatResult = {
-                status: effectiveStatus,
-                foundAmt: old.amount,
-            };
-            await logTransactionResult(extractedId, repeatResult, old, null, portalId);
-
-            chrome.tabs.sendMessage(tabId, {
-                action: "integrationResult",
-                rowId,
-                success: true,
-                data: {
-                    status: effectiveStatus,
-                    originalStatus: old.status,
-                    color: "#f59e0b",
-                    statusText: statusText,
-                    foundAmt: old.amount || "0",
-                    timeStr: getTimeAgo(old.timestamp, old.dateVerified) || "N/A",
-                    foundName: old.recipientName || "Previously Processed",
-                    senderName: old.senderName || "-",
-                    senderPhone: old.senderPhone || "-",
-                    repeatCount: old.repeatCount,
-                    id: extractedId || old.id || "N/A",
-                    processedBy: old.processedBy || (auth.currentUser ? auth.currentUser.email : "System"),
-                    bankName: isKaffiId ? "Kaafi" : "Other"
-                },
-                extractedId,
-                imgUrl: src
-            }).catch(() => {});
-            return;
-        }
-        // If incomplete, fall through to re-fetch.
-    }
-
-    updateStatus("Checking Bank...");
-    // Offscreen document is already setup at start of function
-    
-    let data;
-    try {
-        data = await new Promise((resolve, reject) => {
-            const timeoutId = setTimeout(() => reject(new Error("Bank Check Timeout")), 20000);
-            chrome.runtime.sendMessage({ action: 'parseReceipt', url: matchedBank.url + extractedId }, (response) => {
-                clearTimeout(timeoutId);
-                if (chrome.runtime.lastError) {
-                    reject(new Error("Connection Error: " + chrome.runtime.lastError.message));
-                } else {
-                    resolve(response);
-                }
-            });
-        });
-    } catch (err) {
-        chrome.tabs.sendMessage(tabId, { 
-          action: "integrationResult", 
-          rowId, 
-          success: false, 
-          error: err.message,
-          imgUrl: src
-        }).catch(() => {});
-        return;
-    }
-
-    if (!data || data.error) {
-        chrome.tabs.sendMessage(tabId, { 
-          action: "integrationResult", 
-          rowId, 
-          success: false, 
-          error: data?.error || "Bank Fetch Failed",
-          imgUrl: src
-        }).catch(() => {});
-        return;
-    }
-
-      // CHECK FOR 404 / INVALID ID (Bank returned page but no data or "Not Found Page")
-      if (!data.recipient) {
-          const result = { // This is the verificationResult
-              status: "Bank 404",
-              color: "#f59e0b",
-              statusText: "⚠️ BANK 404 (NOT FOUND)",
-              foundAmt: "0",
-              timeStr: "N/A",
-              foundName: "Retry Required",
-              senderName: "-",
-              senderPhone: "-",
-              repeatCount: 0,
-              id: extractedId,
-              processedBy: auth.currentUser ? auth.currentUser.email : "System",
-              bankName: "Other"
-          };
-          await logTransactionResult(extractedId, { ...result, foundAmt: 0 }, old, null, portalId);
-
-          chrome.tabs.sendMessage(tabId, {
-            action: "integrationResult",
-            rowId: rowId,
-            success: true,
-            data: result,
-            extractedId: extractedId,
-            imgUrl: src
-          }).catch(() => {});
-          return;
-      }
-
-      const maxHours = settingsCache.maxReceiptAge || 0.5;
-      const result = verifyTransactionData(data, amount, settingsCache.targetName, maxHours);
-      
-      if (parseFloat(String(result.foundAmt).replace(/,/g, '')) < 50) {
-          result.status = "Under 50";
-          result.color = "#ef4444";
-          result.statusText = "❌ UNDER 50 ETB";
-      }
-
-      if (result.status.startsWith("AA")) result.color = "#3b82f6";
-
-      await logTransactionResult(extractedId, result, old, null, portalId);
-
-      chrome.tabs.sendMessage(tabId, {
+    chrome.tabs.sendMessage(tabId, {
         action: "integrationResult",
         rowId: rowId,
         success: true,
-        data: { ...result, repeatCount: 0, id: extractedId, processedBy: auth.currentUser ? auth.currentUser.email : "System", bankName: "Other" },
-        extractedId: extractedId,
+        data: result,
+        extractedId: originalId,
         imgUrl: src
-      }).catch(() => {});
+    }).catch(() => {});
 
   } catch (err) {
     chrome.tabs.sendMessage(tabId, { 
@@ -454,39 +208,31 @@ export async function handleMultiIntegrationVerify(request, tabId) {
     let processedIds = new Set();
     let totalFoundAmount = 0;
     let errors = [];
-    let lastBankName = "Other"; // Initialize once at function scope
+    let lastBankName = "Other";
 
-    // Metadata from the last valid transaction for display
     let lastSenderName = "-";
     let lastSenderPhone = "-";
     let lastRecipientName = "N/A";
     let lastTimeStr = "N/A";
-    let lastTelegramMessageId = null;
     let maxRepeatCount = 0;
     let duplicateTransaction = null;
     let failedTransaction = null;
 
-    await setupOffscreenDocument();
     const banks = settingsCache.banks || DEFAULT_BANKS;
 
-    // 1. Extract & Verify IDs
     for (let i = 0; i < images.length; i++) {
         const img = images[i];
         let mimeType = 'image/jpeg';
-        let isDirectMatch = false;
-        let smsEntry = null; // Declare smsEntry here
         
         try {
             let finalId = null;
 
-            // 1. Try Enhanced Image First
             updateStatus(`Scanning  (Enhanced)...`);
             let enhancedBase64 = null;
                 
             if (img.enhancedDataUrl) {
                 enhancedBase64 = img.enhancedDataUrl.split(',')[1] || img.enhancedDataUrl;
             } else if (img.dataUrl) {
-                // Fallback processing if enhanced not pre-calculated
                 enhancedBase64 = await new Promise(resolve => {
                     chrome.runtime.sendMessage({ action: 'processImage', dataUrl: img.dataUrl }, response => {
                         resolve(response?.base64);
@@ -496,7 +242,6 @@ export async function handleMultiIntegrationVerify(request, tabId) {
 
             if (enhancedBase64) finalId = await callAIVisionWithRetry(enhancedBase64, 'image/jpeg');
 
-            // 2. Fallback to Clean/Raw Image
             if (!finalId || finalId === "ERROR") {
                 updateStatus(`Retry  (Clean)...`);
                 let cleanBase64 = null;
@@ -504,7 +249,6 @@ export async function handleMultiIntegrationVerify(request, tabId) {
                 if (img.cleanDataUrl) {
                     cleanBase64 = img.cleanDataUrl.split(',')[1] || img.cleanDataUrl;
                 } else if (img.dataUrl) {
-                    // Fallback for legacy/single image flow
                     cleanBase64 = img.dataUrl.split(',')[1] || img.dataUrl;
                     mimeType = getMimeTypeFromDataUrl(img.dataUrl);
                 }
@@ -530,203 +274,44 @@ export async function handleMultiIntegrationVerify(request, tabId) {
             }
             
             if (finalId && finalId !== "ERROR" && finalId.trim() !== "") {
-                // Deduplicate
                 if (processedIds.has(finalId)) continue;
                 processedIds.add(finalId);
 
-                // Match Bank
                 const matchedBank = banks.find(b => finalId.length === parseInt(b.length) && b.prefixes.some(prefix => finalId.startsWith(prefix)));
                 const isKaffiId = matchedBank && matchedBank.name === "Kaafi";
 
                 if (!matchedBank) {
                     errors.push(`ID ${finalId}: No Matching Bank`);
-                    // Treat invalid format as skip, without logging
                     continue;
                 }
 
-                // --- NEW SMS VAULT CHECK FOR MULTI-INTEGRATION ---
-                // 1. Direct ID Match
-                smsEntry = await getSmsEntryById(finalId);
-                if (smsEntry) isDirectMatch = true;
+                const { found, result } = await verifyViaSms(finalId, amount, customerPhone, portalId, isKaffiId);
 
-                if (!smsEntry) {
-                    smsEntry = await getSmsEntryByClaimedId(finalId);
-                    if (smsEntry && smsEntry.id === finalId) isDirectMatch = true;
-                }
-
-                if (!smsEntry && !isKaffiId && customerPhone && amount) {
-                    smsEntry = await getSmsEntryByFingerprint(customerPhone, amount);
-                }
-
-                if (smsEntry) {
-                    let status = "Verified";
-                    let repeatCount = smsEntry.verificationCount || 0;
-
-                    if (repeatCount > 0) {
-                        status = "Repeat";
-                    }
-
-                    await updateSmsEntry(smsEntry.id, {
-                        verificationCount: (smsEntry.verificationCount || 0) + 1,
-                        claimedByScreenshotId: finalId,
-                        status: status === "Verified" ? "verified" : "duplicate",
-                        dateVerified: new Date().toLocaleString(),
-                        processedBy: auth.currentUser.email,
-                        processedByUid: auth.currentUser.uid,
-                    });
-
-                    const verificationResult = {
-                        status: status,
-                        foundAmt: smsEntry.amount,
-                        senderName: smsEntry.senderName,
-                        senderPhone: smsEntry.senderPhone,
-                        foundName: smsEntry.recipientName || "Kaafi",
-                        bankDate: smsEntry.transactionTimestamp ? new Date(smsEntry.transactionTimestamp.toDate()).toLocaleString() : "N/A",
-                        timeStr: getTimeAgo(smsEntry.transactionTimestamp ? smsEntry.transactionTimestamp.toDate().getTime() : Date.now()),
-                        repeatCount: repeatCount,
-                        bankName: isDirectMatch ? "Kaafi" : "Other"
-                    };
-                    
-                    // Fetch existing transaction to properly track repeat counts
-                    const existingTx = await getTransaction(smsEntry.id);
-
+                if (found) {
                     validTransactions.push({ 
-                        id: smsEntry.id, 
-                        amount: smsEntry.amount, 
-                        data: verificationResult, 
-                        timeStr: verificationResult.timeStr, 
-                        existingTx: existingTx, 
-                        isDirectMatch 
+                        id: result.id, 
+                        amount: result.foundAmt, 
+                        data: result, 
+                        timeStr: result.timeStr,
                     });
-                    totalFoundAmount += smsEntry.amount;
+                    totalFoundAmount += result.foundAmt;
                     
-                    lastSenderName = smsEntry.senderName;
-                    lastSenderPhone = smsEntry.senderPhone;
-                    lastRecipientName = smsEntry.recipientName;
-                    lastTimeStr = verificationResult.timeStr;
-                    lastBankName = verificationResult.bankName;
+                    lastSenderName = result.senderName;
+                    lastSenderPhone = result.senderPhone;
+                    lastRecipientName = result.foundName;
+                    lastTimeStr = result.timeStr;
+                    lastBankName = result.bankName;
 
-                    continue; 
-                }
-                // --- END NEW SMS VAULT CHECK FOR MULTI-INTEGRATION ---
-
-                if (!settingsCache.bankCheckEnabled) {
-                    errors.push(`ID ${finalId}: Bank Check Disabled`);
-                    continue;
-                }
-
-                // Check DB for duplicates
-                let old = null;
-                try {
-                    old = await getTransaction(finalId);
-                } catch (e) {
-                    if (e.message === "OFFLINE") {
-                        chrome.tabs.sendMessage(tabId, {
-                            action: "integrationResult",
-                            rowId,
-                            success: true,
-                            data: {
-                                status: "Offline",
-                                color: "#64748b",
-                                statusText: "⚠️ OFFLINE",
-                                foundAmt: "0",
-                                timeStr: "N/A",
-                                foundName: "Check Connection",
-                                senderName: "-",
-                                senderPhone: "-"
-                            },
-                            extractedId: finalId,
-                            imgUrl: primaryUrl
-                        }).catch(() => {});
-                        return;
+                    if (result.status === "Repeat") {
+                        if (!duplicateTransaction) duplicateTransaction = result;
                     }
-                    console.error(e);
-                }
 
-                if (old) {
-                    const isIncomplete = !old.senderName || !old.bankDate;
-                    if (!isIncomplete) {
-                        // It's a complete repeat. Log and continue.
-                        old.repeatCount = (old.repeatCount || 0) + 1;
-                        old.lastRepeat = Date.now();
-                        await logTransactionResult(finalId, { status: "Repeat", foundAmt: old.amount }, old, null, portalId);
-                        errors.push(`ID ${finalId}: Duplicate / Repeat`);
-                        maxRepeatCount = Math.max(maxRepeatCount, old.repeatCount);
-                        if (!duplicateTransaction) duplicateTransaction = { ...old, bankName: isKaffiId ? "Kaafi" : "Other" };
-                        continue;
-                    }
-                    // If incomplete, fall through to bank fetch logic.
-                }
-
-                // Fetch Bank Data
-                const data = await new Promise((resolve) => {
-                    const timeoutId = setTimeout(() => resolve(null), 20000);
-                    chrome.runtime.sendMessage({ action: 'parseReceipt', url: matchedBank.url + finalId }, (response) => {
-                        clearTimeout(timeoutId);
-                        resolve(response && !response.error ? response : null);
-                    });
-                });
-
-                if (!data || !data.recipient) {
-                    errors.push(`ID ${finalId}: Bank 404`);
-                    continue;
-                }
-
-                // Verify Data (Pass 0 as amount to just check validity of Name/Date)
-                const check = verifyTransactionData(data, 0, settingsCache.targetName, settingsCache.maxReceiptAge);
-                
-                const numericAmt = parseFloat(String(check.foundAmt).replace(/,/g, ''));
-
-                if (numericAmt < 50) {
-                     errors.push(`ID ${finalId}: Under 50`);
-                     if (!failedTransaction) {
-                         failedTransaction = {
-                             amount: numericAmt,
-                             timeStr: check.timeStr,
-                             recipientName: check.foundName,
-                             senderName: check.senderName,
-                             senderPhone: check.senderPhone,
-                             status: "Under 50",
-                             statusText: "❌ UNDER 50 ETB",
-                             id: finalId,
-                             bankName: "Other",
-                             existingTx: old,
-                             bankDate: check.bankDate
-                         };
-                     }
-                     continue;
-                }
-                
-                if (!check.nameOk || !check.timeOk) {
-                     errors.push(`ID : ${check.status}`);
-                     if (!failedTransaction) {
-                         failedTransaction = {
-                             amount: check.foundAmt,
-                             timeStr: check.timeStr,
-                             recipientName: check.foundName,
-                             senderName: check.senderName,
-                             senderPhone: check.senderPhone,
-                             status: check.status,
-                             statusText: check.statusText,
-                             id: finalId,
-                             bankName: "Other",
-                             existingTx: old,
-                             bankDate: check.bankDate
-                         };
-                     }
+                    if (totalFoundAmount >= amount) break;
                 } else {
-                     // Valid transaction found
-                     validTransactions.push({ id: finalId, amount: numericAmt, data: data, timeStr: check.timeStr, existingTx: old, isDirectMatch: false });
-                     totalFoundAmount += numericAmt;
-                     
-                     lastSenderName = data.senderName;
-                     lastSenderPhone = data.senderPhone;
-                     lastRecipientName = data.recipient;
-                     lastTimeStr = check.timeStr;
-                     lastBankName = "Other";
-
-                     // Optimization: Stop processing if we have found the full amount
-                     if (totalFoundAmount >= amount) break;
+                     errors.push(`ID ${finalId}: Not Found in SMS`);
+                     if (!failedTransaction) {
+                         failedTransaction = result;
+                     }
                 }
             }
         } catch (e) {
@@ -734,13 +319,11 @@ export async function handleMultiIntegrationVerify(request, tabId) {
         }
     }
 
-    // 2. Analyze Results
     if (validTransactions.length === 0) {
         const isRateLimit = errors.some(e => e.includes("Rate Limit"));
         const isLoadError = errors.some(e => e.includes("Failed to load"));
         const isServiceError = errors.some(e => e.includes("Service Error"));
         
-        // LOGIC FIX: Prioritize specific errors over "Random"
         let finalStatus = "Random";
         let finalColor = "#ef4444";
         let statusText = errors.length > 0 ? (isRateLimit ? "⚠️ " + errors[0] : "❌ " + errors[0]) : "❌ NO VALID ID FOUND";
@@ -750,98 +333,50 @@ export async function handleMultiIntegrationVerify(request, tabId) {
         let foundName = "N/A";
         let senderName = "-";
         let senderPhone = "-";
-        let originalStatus = undefined, bankName = "Other";
+        let bankName = "Other";
         let extractedId = "ERROR";
 
         if (isRateLimit) {
-
             finalStatus = "API Limit";
             finalColor = "#f59e0b";
         } else if (isServiceError) {
             finalStatus = "AI Error";
             finalColor = "#ef4444";
             statusText = "❌ AI SERVICE ERROR";
-        } else if (duplicateTransaction) {
-            // Already logged in the loop. Just setting UI variables.
-            finalStatus = "Repeat";
-            finalColor = "#f59e0b";
-            statusText = "🔁 DUPLICATE / REPEAT";
-            
-            foundAmt = duplicateTransaction.amount || "0";
-            timeStr = getTimeAgo(duplicateTransaction.timestamp, duplicateTransaction.dateVerified) || "N/A";
-            foundName = duplicateTransaction.recipientName || "Previously Processed";
-            senderName = duplicateTransaction.senderName || "-";
-            senderPhone = duplicateTransaction.senderPhone || "-";
-            originalStatus = duplicateTransaction.status;
-            extractedId = duplicateTransaction.id || "N/A";
-            bankName = duplicateTransaction.bankName || "Other";
         } else if (failedTransaction) {
-            // This is a specific failure (e.g. Old Receipt) that needs to be logged.
-            const failureResult = {
-                status: failedTransaction.status,
-                foundAmt: failedTransaction.amount,
-                senderName: failedTransaction.senderName,
-                bankCheckResult: failedTransaction.bankCheckResult,
-                senderPhone: failedTransaction.senderPhone,
-                foundName: failedTransaction.recipientName,
-                timeStr: failedTransaction.timeStr,
-                bankDate: failedTransaction.bankDate,
-                bankName: failedTransaction.bankName || "Other"
-            };
-            // Log the failed transaction.
-            await logTransactionResult(failedTransaction.id, failureResult, failedTransaction.existingTx, null, portalId);
-
             finalStatus = failedTransaction.status;
             statusText = failedTransaction.statusText;
-            if (finalStatus === "Old Receipt") finalColor = "#ff9800";
-            else finalColor = "#f44336";
-            
-            foundAmt = failedTransaction.amount;
+            finalColor = failedTransaction.color;
+            foundAmt = failedTransaction.foundAmt;
             timeStr = failedTransaction.timeStr;
-            foundName = failedTransaction.recipientName;
+            foundName = failedTransaction.foundName;
             senderName = failedTransaction.senderName;
             senderPhone = failedTransaction.senderPhone;
             bankName = failedTransaction.bankName || "Other";
             extractedId = failedTransaction.id;
         } else if (isLoadError) {
-            finalStatus = "Image Load Failed"; // Treat load error as retryable
+            finalStatus = "Image Load Failed"; 
             finalColor = "#ef4444";
             statusText = "❌ IMAGE LOAD FAILED";
-            // Do NOT log to DB for technical load errors
         } else if (errors.length > 0) {
-            finalStatus = "Random"; // Treat other errors as Random to prevent auto-reject
+            finalStatus = "Random"; 
             finalColor = "#ef4444";
-            statusText = `❌ ${errors[0]}`;
+            statusText = "❌ RANDOM";
 
-            // FALLBACK FIX: Extract ID from error string if failedTransaction was missed
             const idMatch = errors[0].match(/^ID ([A-Z0-9]+): (.*)$/i);
             if (idMatch) {
                 extractedId = idMatch[1];
                 const errType = idMatch[2];
-                
-                if (errType.includes("Old Receipt")) {
-                    finalStatus = "Old Receipt";
-                    finalColor = "#ff9800";
-                } else if (errType.includes("Wrong Recipient")) {
+                if (errType.includes("Not Found")) {
                     finalStatus = "Wrong Recipient";
-                } else if (errType.includes("Under 50")) {
-                    finalStatus = "Under 50";
-                } else if (errType.includes("AMT MISMATCH")) {
-                    finalStatus = "Amount Mismatch";
-                } else if (errType.includes("Bank 404")) {
-                    finalStatus = "Bank 404";
-                    finalColor = "#f59e0b";
-                    statusText = "⚠️ BANK 404 (NOT FOUND)";
+                    finalColor = "#ef4444";
+                    statusText = "❌ WRONG RECIPIENT";
                 }
             }
         } else {
-            // This is a "Random" case where no valid ID was found or matched.
             const randomKey = `RANDOM_${Date.now()}`;
             const originalId = processedIds.size > 0 ? Array.from(processedIds).join(', ') : "ERROR";
-            const randomResult = {
-                status: "Random",
-                foundAmt: amount,
-            };
+            const randomResult = { status: "Random", foundAmt: amount };
             await logTransactionResult(randomKey, randomResult, null, originalId, portalId);
             finalStatus = "Random";
         }
@@ -852,7 +387,6 @@ export async function handleMultiIntegrationVerify(request, tabId) {
             success: true,
             data: {
                 status: finalStatus,
-                originalStatus: originalStatus,
                 color: finalColor,
                 statusText: statusText,
                 foundAmt: foundAmt,
@@ -871,33 +405,17 @@ export async function handleMultiIntegrationVerify(request, tabId) {
         return;
     }
 
-    // 3. Save Valid Transactions & Determine Status
-    for (const tx of validTransactions) {
-        const verificationResult = { 
-            status: tx.data.status || "Verified", 
-            foundAmt: tx.amount, 
-            senderName: tx.data.senderName, 
-            senderPhone: tx.data.senderPhone, 
-            foundName: tx.data.recipient || tx.data.foundName, 
-            timeStr: tx.timeStr, 
-            bankDate: tx.data.date || tx.data.bankDate,
-            bankName: tx.isDirectMatch ? "Kaafi" : "Other"
-        };
-        await logTransactionResult(tx.id, verificationResult, tx.existingTx, null, portalId);
-    }
-
     let finalStatus = "Verified";
     let color = "#10b981";
     let statusText = images.length > 1 ? "✅ VERIFIED (MULTI)" : "✅ VERIFIED";
     let finalRepeatCount = 0;
 
-    // Determine if the overall status is a repeat
     const allRepeat = validTransactions.length > 0 && validTransactions.every(tx => tx.data.status === "Repeat");
     if (allRepeat) {
         finalStatus = "Repeat";
         color = "#f59e0b";
         statusText = "🔁 DUPLICATE / REPEAT";
-        finalRepeatCount = Math.max(...validTransactions.map(tx => (tx.existingTx?.repeatCount || 0) + 1));
+        finalRepeatCount = Math.max(...validTransactions.map(tx => tx.data.repeatCount || 0));
     } else if (Math.abs(totalFoundAmount - parseFloat(amount)) > 0.01) {
         finalStatus = `AA is ${totalFoundAmount}`;
         color = "#3b82f6";

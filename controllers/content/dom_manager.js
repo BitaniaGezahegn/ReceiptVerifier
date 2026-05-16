@@ -525,10 +525,10 @@ export class DomManager {
                 // Map internal statuses to valid portal rejection reasons
                 if (result.status === 'Skipped Name') {
                     comment = 'Wrong Recipient';
-                } else if (result.status === 'Verified' || result.status.startsWith('AA')) {
-                    comment = 'Random'; // Default to "Random" for bulk-rejecting normal transactions
+                } else if (result.status === 'Verified') {
+                    comment = 'Random'; 
                 } else if (result.status === 'Unprocessed') {
-                    comment = ''; // Reject without writing a comment
+                    comment = ''; 
                 }
 
                 inputComment.value = comment;

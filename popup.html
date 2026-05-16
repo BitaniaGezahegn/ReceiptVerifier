@@ -357,20 +357,6 @@
     <div class="settings-content">
       <div class="setting-row">
         <div class="setting-row-label">
-          <span class="setting-name">Enable SMS Vault Check</span>
-          <span class="setting-description">Prioritize matching against SMS records.</span>
-        </div>
-        <label class="toggle-switch"><input type="checkbox" id="sms-check-checkbox"><span class="slider"></span></label>
-      </div>
-      <div class="setting-row">
-        <div class="setting-row-label">
-          <span class="setting-name">Enable Bank Portal Check</span>
-          <span class="setting-description">Use bank website if SMS match fails.</span>
-        </div>
-        <label class="toggle-switch"><input type="checkbox" id="bank-check-checkbox"><span class="slider"></span></label>
-      </div>
-      <div class="setting-row">
-        <div class="setting-row-label">
           <span class="setting-name">AI Scan Behavior</span>
           <span class="setting-description">Choose how to handle verification requests.</span>
         </div>
@@ -408,24 +394,8 @@
             </div>
         </div>
       </div>
-      <div class="setting-row">
-        <div class="setting-row-label">
-          <span class="setting-name">Headless Mode</span>
-          <span class="setting-description">Verify without opening a new tab (faster).</span>
-        </div>
-        <label class="toggle-switch"><input type="checkbox" id="headless-checkbox"><span class="slider"></span></label>
-      </div>
-      <div class="setting-row">
-        <div class="setting-row-label">
-          <span class="setting-name">Max Receipt Age (Hours)</span>
-          <span class="setting-description">Reject receipts older than this limit.</span>
-        </div>
-        <div class="setting-control">
-          <button id="age-minus" class="input-styled" style="width: 28px; font-weight: bold;">-</button>
-          <input type="number" id="age-input" value="0.5" step="0.5" min="0.5" class="input-styled" style="width: 45px; text-align: center; font-weight: 600;">
-          <button id="age-plus" class="input-styled" style="width: 28px; font-weight: bold;">+</button>
-        </div>
-      </div>
+
+
     </div>
   </details>
 
@@ -459,6 +429,10 @@
       <div class="setting-row">
         <div class="setting-row-label"><span class="setting-name">Skip Random/Unknown</span><span class="setting-description">Auto-skip receipts AI cannot read.</span></div>
         <label class="toggle-switch"><input type="checkbox" id="skip-random-checkbox"><span class="slider"></span></label>
+      </div>
+      <div class="setting-row">
+        <div class="setting-row-label"><span class="setting-name">Skip Wrong Recipients</span><span class="setting-description">Auto-skip receipts not found in vault.</span></div>
+        <label class="toggle-switch"><input type="checkbox" id="skip-wrong-recipient-checkbox"><span class="slider"></span></label>
       </div>
       <div class="setting-row">
         <div class="setting-row-label"><span class="setting-name">Start from Bottom</span><span class="setting-description">Process batch queue in reverse.</span></div>
@@ -568,9 +542,16 @@
 
   <div id="about" class="tab-content about-section">
     <h2>E-birr Verifier Pro</h2>
-    <p>Version: 2.5</p>
-    <p>This extension uses AI to help you quickly and accurately verify E-birr transaction screenshots from various sources.</p>
-    <p>Use the right-click menu on an image or the browser action to get started.</p>
+    <p>Version: 4.0</p>
+    <p>This extension is a high-performance verification tool optimized for SMS-based workflows. It leverages advanced AI to extract transaction data from receipts and cross-references it instantly with your SMS vault.</p>
+    <p>Key Features:
+      <ul>
+        <li>SMS-Only Verification (No bank scraping required)</li>
+        <li>AI-Enhanced Receipt Reading</li>
+        <li>Automatic Portal Integration & Commenting</li>
+        <li>Dual-Mode Matching (ID & Phone Fingerprinting)</li>
+      </ul>
+    </p>
   </div>
 
   <!-- Edit Modal -->
